@@ -1,0 +1,124 @@
+package ru.savushkina.feature.onboarding
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import ru.savushkina.core.designsystem.component.*
+import ru.savushkina.core.designsystem.pattern.TerminalScreen
+import ru.savushkina.core.designsystem.theme.CodeboxTheme
+import ru.savushkina.core.designsystem.theme.Spacing
+import ru.savushkina.core.model.Role
+
+@Composable
+fun OnboardingScreen(
+    onComplete: () -> Unit,
+    viewModel: OnboardingViewModel = hiltViewModel()
+) {
+    val state by viewModel.state.collectAsStateWithLifecycle()
+
+    OnboardingContent(
+        state = state,
+        onNameChange = viewModel::onNameChange,
+        onRoleSelect = viewModel::onRoleSelect,
+        onComplete = { viewModel.complete(onComplete) }
+    )
+}
+
+@Composable
+fun OnboardingContent(
+    state: OnboardingState,
+    onNameChange: (String) -> Unit = {},
+    onRoleSelect: (Role) -> Unit = {},
+    onComplete: () -> Unit = {}
+) {
+    TerminalScreen {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState()),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = Spacing.lg),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                SectionHeader(text = "init_profile")
+                Spacer(Modifier.height(Spacing.xl))
+
+                WireTextField(
+                    value = state.name,
+                    onValueChange = onNameChange,
+                    label = "name",
+                    placeholder = "Ваше имя"
+                )
+
+                Spacer(Modifier.height(Spacing.xl))
+                LabelText(
+                    text = "// выберете свою роль",
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(Modifier.height(Spacing.md))
+
+                Role.entries.forEach { role ->
+                    val selected = state.role == role
+
+                    KeyValueRow(
+                        key = if (selected) "[x]" else "[ ]",
+                        value = role.displayName,
+                        accent = selected,
+                        modifier = Modifier
+                            .clickable { onRoleSelect(role) }
+                            .padding(vertical = Spacing.xs)
+                    )
+                }
+
+                state.error?.let {
+                    Spacer(Modifier.height(Spacing.md))
+                    AlertBox(text = it)
+                }
+
+                Spacer(Modifier.height(Spacing.xl))
+
+                WireButton(
+                    text = if (state.isLoading) "загрузка..." else "сохранить()",
+                    onClick = onComplete,
+                    accent = true,
+                    enabled = !state.isLoading
+                )
+            }
+        }
+    }
+}
+
+@Preview(showBackground = true, backgroundColor = 0xFF000000)
+@Composable
+private fun OnboardingPreviewEmpty() {
+    CodeboxTheme {
+        OnboardingContent(state = OnboardingState())
+    }
+}
+
+@Preview(showBackground = true, backgroundColor = 0xFF000000)
+@Composable
+private fun OnboardingPreviewSelected() {
+    CodeboxTheme {
+        OnboardingContent(
+            state = OnboardingState(
+                name = "Алена",
+                role = Role.DEVELOPMENT
+            )
+        )
+    }
+}
