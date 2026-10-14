@@ -1,13 +1,8 @@
 package ru.savushkina.feature.auth
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Visibility
-import androidx.compose.material.icons.outlined.VisibilityOff
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -15,29 +10,27 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ru.savushkina.core.designsystem.component.*
 import ru.savushkina.core.designsystem.pattern.TerminalScreen
 import ru.savushkina.core.designsystem.theme.CodeboxTheme
-import ru.savushkina.core.designsystem.theme.Sizes
 import ru.savushkina.core.designsystem.theme.Spacing
 
 @Composable
 fun AuthScreen(
-    onLoginSuccess: (Boolean) -> Unit,
-    onRegisterSuccess: () -> Unit,
+    onAuthSuccess: () -> Unit,
     viewModel: AuthViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-
     AuthContent(
         state = state,
         onEmailChange = viewModel::onEmailChange,
         onPasswordChange = viewModel::onPasswordChange,
         onTogglePassword = viewModel::togglePasswordVisibility,
-        onSignIn = { viewModel.signIn(onLoginSuccess) },
-        onSignUp = { viewModel.signUp(onRegisterSuccess) }
+        onSignIn = { viewModel.signIn(onAuthSuccess) },
+        onSignUp = { viewModel.signUp(onAuthSuccess) }
     )
 }
 
@@ -51,71 +44,75 @@ fun AuthContent(
     onSignUp: () -> Unit = {}
 ) {
     TerminalScreen {
-        Column(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.Center
-        ) {
-            SectionHeader(text = "codebox")
-            Spacer(Modifier.height(Spacing.xxl))
+        // Показываем загрузку при isLoading, а также после успеха (isDone),
+        // чтобы форма не мелькнула до переключения SessionState.
+        if (state.isLoading || state.isDone) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                BlinkingCursor()
+            }
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState()),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .widthIn(max = 480.dp)
+                        .padding(vertical = Spacing.lg),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    SectionHeader(text = "codebox")
+                    Spacer(Modifier.height(Spacing.xxl))
 
-            WireTextField(
-                value = state.email,
-                onValueChange = onEmailChange,
-                label = "email",
+                    WireTextField(
+                        value = state.email,
+                        onValueChange = onEmailChange,
+                        label = "email",
+                        enabled = !state.isLoading
+                    )
 
-            )
-            Spacer(Modifier.height(Spacing.md))
+                    Spacer(Modifier.height(Spacing.md))
 
-            WireTextField(
-                value = state.password,
-                onValueChange = onPasswordChange,
-                label = "password",
-                placeholder = "••••••••",
-                visualTransformation = if (state.isPasswordVisible)
-                    VisualTransformation.None
-                else
-                    PasswordVisualTransformation(),
-                trailingIcon = {
-                    Icon(
-                        imageVector = if (state.isPasswordVisible)
-                            Icons.Outlined.Visibility
+                    WireTextField(
+                        value = state.password,
+                        onValueChange = onPasswordChange,
+                        label = "password",
+                        visualTransformation = if (state.isPasswordVisible)
+                            VisualTransformation.None
                         else
-                            Icons.Outlined.VisibilityOff,
-                        contentDescription = if (state.isPasswordVisible)
-                            "Скрыть пароль"
-                        else
-                            "Показать пароль",
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier
-                            .size(Sizes.iconMd)
-                            .clickable(onClick = onTogglePassword)
+                            PasswordVisualTransformation(),
+                        trailingIcon = {
+                            PasswordVisibilityToggle(
+                                visible = state.isPasswordVisible,
+                                onToggle = onTogglePassword
+                            )
+                        }
+                    )
+
+                    state.error?.let {
+                        Spacer(Modifier.height(Spacing.md))
+                        AlertBox(text = it)
+                    }
+
+                    Spacer(Modifier.height(Spacing.xl))
+
+                    WireButton(
+                        text = "войти",
+                        onClick = onSignIn,
+                    )
+                    Spacer(Modifier.height(Spacing.sm))
+                    WireButton(
+                        text = "зарегистрироваться",
+                        onClick = onSignUp,
                     )
                 }
-            )
-
-            // Ошибка отображается через AlertBox (без красного цвета, только акцентная рамка)
-            state.error?.let {
-                Spacer(Modifier.height(Spacing.md))
-                AlertBox(text = it)
             }
-
-            Spacer(Modifier.height(Spacing.xl))
-
-            // Кнопка входа — акцентная (зелёная рамка и текст)
-            WireButton(
-                text = if (state.isLoading) "загрузка..." else "войти_в_аккаунт",
-                onClick = onSignIn,
-                accent = true,
-                enabled = !state.isLoading
-            )
-            Spacer(Modifier.height(Spacing.sm))
-
-            // Кнопка регистрации — обычная (серая рамка)
-            WireButton(
-                text = "зарегистрироваться",
-                onClick = onSignUp,
-                enabled = !state.isLoading
-            )
         }
     }
 }
@@ -123,8 +120,19 @@ fun AuthContent(
 @Preview(showBackground = true, backgroundColor = 0xFF000000)
 @Composable
 private fun AuthPreviewEmpty() {
+    CodeboxTheme { AuthContent(state = AuthState()) }
+}
+
+@Preview(showBackground = true, backgroundColor = 0xFF000000)
+@Composable
+private fun AuthPreviewFilled() {
     CodeboxTheme {
-        AuthContent(state = AuthState())
+        AuthContent(
+            state = AuthState(
+                email = "dev@codebox.app",
+                password = "secret123"
+            )
+        )
     }
 }
 
@@ -136,7 +144,21 @@ private fun AuthPreviewError() {
             state = AuthState(
                 email = "dev@codebox.app",
                 password = "wrong",
-                error = "invalid credentials"
+                error = "Неверный email или пароль"
+            )
+        )
+    }
+}
+
+@Preview(showBackground = true, backgroundColor = 0xFF000000)
+@Composable
+private fun AuthPreviewLoading() {
+    CodeboxTheme {
+        AuthContent(
+            state = AuthState(
+                email = "dev@codebox.app",
+                password = "secret123",
+                isLoading = true
             )
         )
     }

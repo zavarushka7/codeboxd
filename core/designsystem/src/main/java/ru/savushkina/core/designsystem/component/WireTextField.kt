@@ -6,9 +6,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.BasicTextField
@@ -19,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import ru.savushkina.core.designsystem.theme.CodeboxTheme
 import ru.savushkina.core.designsystem.theme.Sizes
@@ -34,7 +34,8 @@ fun WireTextField(
     singleLine: Boolean = true,
     enabled: Boolean = true,
     visualTransformation: VisualTransformation = VisualTransformation.None,
-    trailingIcon: (@Composable () -> Unit)? = null
+    trailingIcon: (@Composable () -> Unit)? = null,
+    minHeight: Dp = Sizes.inputHeight
 ) {
     val accent = MaterialTheme.colorScheme.primary
     val textColor = if (enabled) MaterialTheme.colorScheme.onBackground
@@ -44,20 +45,26 @@ fun WireTextField(
         WireFrame(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(Sizes.inputHeight),
+                .heightIn(min = minHeight),
             accent = enabled && value.isNotEmpty()
         ) {
             Row(
-                modifier = Modifier.fillMaxSize(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Start
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = minHeight),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-
+                // Текстовое поле — занимает всё свободное место,
+                // отступы одинаковые сверху и снизу
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .fillMaxHeight()
-                        .padding(start = Spacing.md),
+                        .padding(
+                            start = Spacing.md,
+                            end = Spacing.sm,
+                            top = Spacing.lg,
+                            bottom = Spacing.sm
+                        ),
                     contentAlignment = Alignment.CenterStart
                 ) {
                     if (value.isEmpty() && placeholder.isNotEmpty()) {
@@ -121,6 +128,14 @@ private fun WireTextFieldPreview() {
                 value = "alena@codebox.app",
                 onValueChange = {},
                 label = "email"
+            )
+            WireTextField(
+                value = "Пишу на Kotlin, люблю Compose и корутины.\n" +
+                        "В свободное время читаю исходники библиотек.",
+                onValueChange = {},
+                label = "about",
+                singleLine = false,
+                minHeight = 100.dp
             )
         }
     }

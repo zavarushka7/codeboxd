@@ -7,18 +7,25 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.Dp
 import ru.savushkina.core.designsystem.theme.Spacing
 
 @Composable
 fun TerminalScreen(
     modifier: Modifier = Modifier,
+    topPadding: Dp = Spacing.lg,
     content: @Composable () -> Unit
 ) {
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .padding(Spacing.lg)
+            .padding(
+                start = Spacing.lg,
+                end = Spacing.lg,
+                top = topPadding,
+                bottom = Spacing.lg
+            )
     ) {
         content()
     }

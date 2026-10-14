@@ -7,5 +7,11 @@ enum class Role(val displayName: String) {
     DEVOPS("DevOps"),
     DATA_SCIENCE("Data Science"),
     MACHINE_LEARNING("Машинное обучение"),
-    DO_NOT_SPECIFY("Не указывать")
+    DO_NOT_SPECIFY("Не указывать");
+
+    companion object {
+        fun fromKey(key: String?): Role? = key?.let { k ->
+            entries.firstOrNull { it.name == k }
+        }
+    }
 }

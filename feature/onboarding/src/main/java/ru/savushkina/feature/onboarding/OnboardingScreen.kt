@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -25,7 +24,6 @@ fun OnboardingScreen(
     viewModel: OnboardingViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-
     OnboardingContent(
         state = state,
         onNameChange = viewModel::onNameChange,
@@ -66,14 +64,13 @@ fun OnboardingContent(
 
                 Spacer(Modifier.height(Spacing.xl))
                 LabelText(
-                    text = "// выберете свою роль",
+                    text = "// выберите свою роль",
                     color = MaterialTheme.colorScheme.primary
                 )
                 Spacer(Modifier.height(Spacing.md))
 
                 Role.entries.forEach { role ->
                     val selected = state.role == role
-
                     KeyValueRow(
                         key = if (selected) "[x]" else "[ ]",
                         value = role.displayName,
@@ -92,7 +89,7 @@ fun OnboardingContent(
                 Spacer(Modifier.height(Spacing.xl))
 
                 WireButton(
-                    text = if (state.isLoading) "загрузка..." else "сохранить()",
+                    text = if (state.isLoading) "загрузка..." else "сохранить",
                     onClick = onComplete,
                     accent = true,
                     enabled = !state.isLoading
@@ -105,9 +102,7 @@ fun OnboardingContent(
 @Preview(showBackground = true, backgroundColor = 0xFF000000)
 @Composable
 private fun OnboardingPreviewEmpty() {
-    CodeboxTheme {
-        OnboardingContent(state = OnboardingState())
-    }
+    CodeboxTheme { OnboardingContent(state = OnboardingState()) }
 }
 
 @Preview(showBackground = true, backgroundColor = 0xFF000000)
@@ -115,10 +110,7 @@ private fun OnboardingPreviewEmpty() {
 private fun OnboardingPreviewSelected() {
     CodeboxTheme {
         OnboardingContent(
-            state = OnboardingState(
-                name = "Алена",
-                role = Role.DEVELOPMENT
-            )
+            state = OnboardingState(name = "Алена", role = Role.DEVELOPMENT)
         )
     }
 }

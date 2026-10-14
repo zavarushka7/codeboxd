@@ -28,22 +28,39 @@ android {
 }
 
 dependencies {
+    // Core-модули
     implementation(project(":core:model"))
     implementation(project(":core:network"))
     implementation(project(":core:data"))
     implementation(project(":core:designsystem"))
+    implementation(project(":core:navigation"))
+    implementation(project(":core:domain"))
 
+    // Feature-модули
     implementation(project(":feature:auth"))
     implementation(project(":feature:onboarding"))
     implementation(project(":feature:profile"))
+    implementation(project(":feature:settings"))
 
+    // Compose
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.activity.compose)
-    implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
 
+    // Navigation
+    implementation(libs.androidx.navigation.compose)
+
+    // AndroidX core
+    implementation(libs.androidx.core.ktx)
+
+    // Firebase — BoM ДО библиотек
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.auth)
+    implementation(libs.firebase.firestore)   // добавьте, если нужно
+
+    // Hilt
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
     implementation(libs.hilt.navigation.compose)
