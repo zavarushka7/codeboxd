@@ -29,6 +29,10 @@ android {
 
 dependencies {
     // Core-модули
+
+
+    implementation(project(":feature:favourite_picker"))
+    implementation(project(":feature:search"))
     implementation(project(":core:model"))
     implementation(project(":core:network"))
     implementation(project(":core:data"))
@@ -41,6 +45,12 @@ dependencies {
     implementation(project(":feature:onboarding"))
     implementation(project(":feature:profile"))
     implementation(project(":feature:settings"))
+    implementation(project(":feature:details"))
+    implementation(project(":feature:review"))
+    implementation(project(":feature:feed"))
+
+
+
 
     // Compose
     implementation(platform(libs.androidx.compose.bom))

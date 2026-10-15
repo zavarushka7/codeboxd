@@ -80,8 +80,6 @@ class UserRepositoryImpl @Inject constructor(
             FIELD_DESCRIPTION to description,
             FIELD_AVATAR_BASE64 to avatarBase64
         )
-        // role может быть null — если пользователь снял выбор,
-        // пишем null явно, чтобы затереть в Firestore
         data[FIELD_ROLE] = role?.name ?: ""
 
         firestore.collection(COLLECTION_USERS)
@@ -97,32 +95,10 @@ class UserRepositoryImpl @Inject constructor(
         )
     }
 
-    /**
-     * Очистка стейта — вызывается SessionRepository при выходе.
-     */
     fun clear() {
         _currentUser.value = null
     }
 
-    private fun DocumentSnapshot.toUser(uid: String): User = User(
-        uid = uid,
-        email = getString(FIELD_EMAIL) ?: "",
-        name = getString(FIELD_NAME) ?: "",
-        description = getString(FIELD_DESCRIPTION) ?: "",
-        avatarBase64 = getString(FIELD_AVATAR_BASE64) ?: "",
-        role = Role.fromKey(getString(FIELD_ROLE)),
-        onboardingCompleted = getBoolean(FIELD_ONBOARDING_COMPLETED) ?: false
-    )
-
-    private companion object {
-        const val COLLECTION_USERS = "users"
-        const val FIELD_EMAIL = "email"
-        const val FIELD_NAME = "name"
-        const val FIELD_DESCRIPTION = "description"
-        const val FIELD_AVATAR_BASE64 = "avatarBase64"
-        const val FIELD_ROLE = "role"
-        const val FIELD_ONBOARDING_COMPLETED = "onboardingCompleted"
-    }
     override suspend fun ensureUserExists(uid: String, email: String): Result<User> =
         runCatchingCancellable {
             val doc = firestore.collection(COLLECTION_USERS)
@@ -156,4 +132,24 @@ class UserRepositoryImpl @Inject constructor(
             _currentUser.value = user
             user
         }
+
+    private fun DocumentSnapshot.toUser(uid: String): User = User(
+        uid = uid,
+        email = getString(FIELD_EMAIL) ?: "",
+        name = getString(FIELD_NAME) ?: "",
+        description = getString(FIELD_DESCRIPTION) ?: "",
+        avatarBase64 = getString(FIELD_AVATAR_BASE64) ?: "",
+        role = Role.fromKey(getString(FIELD_ROLE)),
+        onboardingCompleted = getBoolean(FIELD_ONBOARDING_COMPLETED) ?: false
+    )
+
+    private companion object {
+        const val COLLECTION_USERS = "users"
+        const val FIELD_EMAIL = "email"
+        const val FIELD_NAME = "name"
+        const val FIELD_DESCRIPTION = "description"
+        const val FIELD_AVATAR_BASE64 = "avatarBase64"
+        const val FIELD_ROLE = "role"
+        const val FIELD_ONBOARDING_COMPLETED = "onboardingCompleted"
+    }
 }

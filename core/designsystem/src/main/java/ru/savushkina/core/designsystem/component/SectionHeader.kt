@@ -9,21 +9,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import ru.savushkina.core.designsystem.theme.CodeboxTheme
+import ru.savushkina.core.designsystem.util.LocalTextCaseStyle
+import ru.savushkina.core.designsystem.util.toDisplayCase
 
 @Composable
 fun SectionHeader(
     text: String,
     modifier: Modifier = Modifier
 ) {
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        LabelText(
-            text = "// $text",
-            color = MaterialTheme.colorScheme.primary
-        )
-    }
+    val style = LocalTextCaseStyle.current
+    LabelText(
+        text = "// $text".toDisplayCase(style),
+        color = MaterialTheme.colorScheme.primary,
+        modifier = modifier
+    )
 }
 
 @Preview(showBackground = true, backgroundColor = 0xFF000000)

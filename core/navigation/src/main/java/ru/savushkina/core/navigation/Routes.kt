@@ -1,11 +1,23 @@
-package ru.savushkina.core.navigation
-
-/**
- * Все маршруты приложения в одном месте.
- */
 object Routes {
     const val AUTH = "auth"
     const val ONBOARDING = "onboarding"
+    const val FEED = "feed"
+    const val SEARCH = "search"
+    const val TYPES = "types"
+    const val TYPE_ITEMS = "type_items/{type}"
+    const val TOP_RATED = "top_rated"
+    const val LOWEST_RATED = "lowest_rated"
     const val PROFILE = "profile"
+    const val USER_PROFILE = "user/{userId}"
     const val SETTINGS = "settings"
+    const val DETAILS = "details/{itemId}"
+    const val REVIEW_FORM = "review_form/{itemId}"
+    const val REVIEW_DETAIL = "review_detail/{reviewId}"
+    const val FAVOURITE_PICKER = "favourite_picker"
+
+    fun details(itemId: String) = "details/$itemId"
+    fun reviewForm(itemId: String) = "review_form/$itemId"
+    fun reviewDetail(reviewId: String) = "review_detail/$reviewId"
+    fun userProfile(userId: String) = "user/$userId"
+    fun typeItems(type: String) = "type_items/${java.net.URLEncoder.encode(type, "UTF-8")}"
 }

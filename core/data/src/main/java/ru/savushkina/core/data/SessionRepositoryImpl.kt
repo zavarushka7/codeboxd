@@ -8,18 +8,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
 import ru.savushkina.core.domain.SessionRepository
 import ru.savushkina.core.model.SessionState
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Единый источник правды о сессии.
- *
- * Слушает FirebaseAuth + currentUser репозитория и пересчитывает SessionState.
- * Никто больше не должен вручную вызывать clear() или пересчитывать сессию.
- */
 @Singleton
 class SessionRepositoryImpl @Inject constructor(
     private val auth: FirebaseAuth,
@@ -31,23 +24,53 @@ class SessionRepositoryImpl @Inject constructor(
     private val _sessionState = MutableStateFlow<SessionState>(SessionState.Unknown)
     override val sessionState: StateFlow<SessionState> = _sessionState.asStateFlow()
 
+    private var lastHandledUid: String? = null
+
     init {
+        val initialUid = auth.currentUser?.uid
+        if (initialUid != null) {
+            lastHandledUid = initialUid
+            scope.launch { userRepository.refresh(initialUid) }
+        } else {
+            _sessionState.value = SessionState.Unauthenticated
+        }
+
         auth.addAuthStateListener { firebaseAuth ->
             val uid = firebaseAuth.currentUser?.uid
+
             if (uid == null) {
+                lastHandledUid = null
                 userRepository.clear()
                 _sessionState.value = SessionState.Unauthenticated
+            } else if (uid != lastHandledUid) {
+                lastHandledUid = uid
+                scope.launch { userRepository.refresh(uid) }
             }
-            // При signIn/signUp специально ничего не делаем —
-            // refresh вызовется из ViewModel
         }
 
         scope.launch {
             userRepository.currentUser.collect { user ->
-                _sessionState.value = when {
-                    user == null -> SessionState.Unauthenticated
+                val newState = when {
+                    user == null -> {
+                        if (auth.currentUser == null) SessionState.Unauthenticated
+                        else _sessionState.value
+                    }
                     !user.onboardingCompleted -> SessionState.Onboarding(user.uid)
                     else -> SessionState.Authenticated(user)
+                }
+
+                val currentClass = _sessionState.value::class
+                val newClass = newState::class
+
+                if (currentClass != newClass) {
+                    _sessionState.value = newState
+                } else if (newState is SessionState.Authenticated &&
+                    _sessionState.value is SessionState.Authenticated
+                ) {
+                    val oldUser = (_sessionState.value as SessionState.Authenticated).user
+                    if (oldUser != user) {
+                        _sessionState.value = newState
+                    }
                 }
             }
         }

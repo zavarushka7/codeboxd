@@ -9,12 +9,17 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import ru.savushkina.core.domain.AuthRepository
 import ru.savushkina.core.domain.SessionRepository
+import ru.savushkina.core.domain.SettingsRepository
 import ru.savushkina.core.domain.UserRepository
 import ru.savushkina.core.model.Role
+import ru.savushkina.core.model.TextCaseStyle
 import ru.savushkina.core.model.User
 import ru.savushkina.core.model.UserConstraints
 import java.io.ByteArrayOutputStream
@@ -30,7 +35,8 @@ sealed interface SettingsUiState {
 class SettingsViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val userRepository: UserRepository,
-    private val sessionRepository: SessionRepository
+    private val sessionRepository: SessionRepository,
+    private val settingsRepository: SettingsRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<SettingsUiState>(SettingsUiState.Loading)
@@ -44,7 +50,18 @@ class SettingsViewModel @Inject constructor(
 
     private val _error = MutableStateFlow<String?>(null)
     val error = _error.asStateFlow()
+    val textCaseStyle: StateFlow<TextCaseStyle> = settingsRepository.textCaseStyle
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = TextCaseStyle.NORMAL
+        )
 
+    fun setTextCaseStyle(style: TextCaseStyle) {
+        viewModelScope.launch {
+            settingsRepository.setTextCaseStyle(style)
+        }
+    }
     init {
         viewModelScope.launch {
             userRepository.currentUser.collect { user ->

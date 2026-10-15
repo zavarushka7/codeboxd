@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -22,6 +23,7 @@ import ru.savushkina.core.designsystem.pattern.TerminalTopBar
 import ru.savushkina.core.designsystem.theme.CodeboxTheme
 import ru.savushkina.core.designsystem.theme.Spacing
 import ru.savushkina.core.model.Role
+import ru.savushkina.core.model.TextCaseStyle
 import ru.savushkina.core.model.User
 
 @Composable
@@ -34,6 +36,7 @@ fun SettingsScreen(
     val draft by viewModel.draft.collectAsStateWithLifecycle()
     val isSaving by viewModel.isSaving.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
+    val textCaseStyle by viewModel.textCaseStyle.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
     val imagePicker = rememberLauncherForActivityResult(
@@ -53,7 +56,9 @@ fun SettingsScreen(
         onDescriptionChange = viewModel::onDescriptionChange,
         onRoleChange = viewModel::onRoleChange,
         onSave = { viewModel.save(onSuccess = onSaved) },
-        onSignOut = viewModel::signOut
+        onSignOut = viewModel::signOut,
+        textCaseStyle = textCaseStyle,
+        onTextCaseStyleChange = viewModel::setTextCaseStyle,
     )
 }
 
@@ -69,9 +74,11 @@ fun SettingsContent(
     onDescriptionChange: (String) -> Unit = {},
     onRoleChange: (Role) -> Unit = {},
     onSave: () -> Unit = {},
-    onSignOut: () -> Unit = {}
+    onSignOut: () -> Unit = {},
+    textCaseStyle: TextCaseStyle = TextCaseStyle.NORMAL,
+    onTextCaseStyleChange: (TextCaseStyle) -> Unit = {},
 ) {
-    TerminalScreen(topPadding = Spacing.xxl) {
+    TerminalScreen {
         Column(modifier = Modifier.fillMaxSize()) {
             val canSave = !isSaving && state is SettingsUiState.Success
 
@@ -118,7 +125,9 @@ fun SettingsContent(
                         onDescriptionChange = onDescriptionChange,
                         onRoleChange = onRoleChange,
                         onSave = onSave,
-                        onSignOut = onSignOut
+                        onSignOut = onSignOut,
+                        onTextCaseStyleChange = onTextCaseStyleChange,
+                        textCaseStyle = textCaseStyle
                     )
                 }
             }
@@ -137,7 +146,9 @@ private fun SettingsForm(
     onDescriptionChange: (String) -> Unit,
     onRoleChange: (Role) -> Unit,
     onSave: () -> Unit,
-    onSignOut: () -> Unit = {}
+    onSignOut: () -> Unit = {},
+    textCaseStyle: TextCaseStyle = TextCaseStyle.NORMAL,
+    onTextCaseStyleChange: (TextCaseStyle) -> Unit = {},
 ) {
     Box(
         modifier = Modifier
@@ -220,10 +231,52 @@ private fun SettingsForm(
                 accent = true,
                 enabled = !isSaving
             )
+
+            Spacer(Modifier.height(Spacing.xl))
+
+            LabelText(
+                text = "// стиль текста",
+                color = MaterialTheme.colorScheme.primary
+            )
+            Spacer(Modifier.height(Spacing.sm))
+
+            TextCaseStyle.entries.forEach { style ->
+                val selected = textCaseStyle == style
+                // Используем свой ряд, а не KeyValueRow,
+                // чтобы значение не преобразовывалось в выбранный регистр
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(
+                            enabled = !isSaving,
+                            onClick = { onTextCaseStyleChange(style) }
+                        )
+                        .padding(vertical = Spacing.xs),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    LabelText(
+                        text = if (selected) "[x]" else "[ ]",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = style.displayName(),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = if (selected) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onBackground
+                    )
+                }
+            }
             Spacer(Modifier.height(Spacing.xl))
             WireButton(text = "выйти из аккаунта", onClick = onSignOut)
         }
     }
+}
+
+private fun TextCaseStyle.displayName(): String = when (this) {
+    TextCaseStyle.NORMAL -> "обычный"
+    TextCaseStyle.CAMEL_CASE -> "camelCase"
+    TextCaseStyle.SNAKE_CASE -> "snake_case"
 }
 
 @Preview(showBackground = true, backgroundColor = 0xFF000000)

@@ -27,9 +27,16 @@ dependencies {
     implementation(libs.androidx.core.ktx)
 
     implementation(platform(libs.firebase.bom))
+    implementation(libs.androidx.datastore.core)
+    implementation(libs.androidx.datastore.preferences.core)
     implementation(libs.firebase.auth)
     implementation(libs.firebase.firestore)
 
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
+
+    implementation(libs.datastore.preferences)
+
+    // Hilt
+
 }

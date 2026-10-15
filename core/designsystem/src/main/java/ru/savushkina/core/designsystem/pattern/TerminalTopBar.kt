@@ -19,9 +19,7 @@ fun TerminalTopBar(
     right: (@Composable () -> Unit)? = null
 ) {
     Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(vertical = Spacing.sm),
+        modifier = modifier.fillMaxWidth().padding(vertical = Spacing.sm),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {

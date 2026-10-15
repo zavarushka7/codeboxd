@@ -32,4 +32,6 @@ dependencies {
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)
 
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.firestore)
 }
