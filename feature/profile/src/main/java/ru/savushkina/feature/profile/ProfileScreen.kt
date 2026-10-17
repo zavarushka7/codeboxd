@@ -1,7 +1,16 @@
 package ru.savushkina.feature.profile
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -14,14 +23,22 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
-
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import ru.savushkina.core.designsystem.component.*
+import ru.savushkina.core.designsystem.component.AlertBox
+import ru.savushkina.core.designsystem.component.BlinkingCursor
+import ru.savushkina.core.designsystem.component.FavouriteFourSection
+import ru.savushkina.core.designsystem.component.HorizontalLine
+import ru.savushkina.core.designsystem.component.KeyValueRow
+import ru.savushkina.core.designsystem.component.LabelText
+import ru.savushkina.core.designsystem.component.ReviewRow
+import ru.savushkina.core.designsystem.component.SectionHeader
+import ru.savushkina.core.designsystem.component.WireAvatar
+import ru.savushkina.core.designsystem.component.WireButton
+import ru.savushkina.core.designsystem.component.WireFrame
 import ru.savushkina.core.designsystem.pattern.TerminalScreen
 import ru.savushkina.core.designsystem.pattern.TerminalTopBar
-import ru.savushkina.core.designsystem.theme.CodeboxTheme
 import ru.savushkina.core.designsystem.theme.Sizes
 import ru.savushkina.core.designsystem.theme.Spacing
 import ru.savushkina.core.model.Item
@@ -35,6 +52,7 @@ fun ProfileScreen(
     onSettingsClick: () -> Unit,
     onReviewClick: (reviewId: String) -> Unit,
     onAddFavouriteClick: (slotIndex: Int) -> Unit,
+    onCollectionsClick: (userId: String?) -> Unit,
     viewModel: ProfileViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -51,7 +69,11 @@ fun ProfileScreen(
         onSettingsClick = onSettingsClick,
         onReviewClick = onReviewClick,
         onAddFavouriteClick = onAddFavouriteClick,
-        onRemoveFavourite = viewModel::removeFavourite
+        onRemoveFavourite = viewModel::removeFavourite,
+        onCollectionsClick = {
+            val uid = (state as? ProfileUiState.Success)?.user?.uid
+            onCollectionsClick(if (viewModel.isOwnProfile) null else uid)
+        }
     )
 }
 
@@ -66,7 +88,8 @@ fun ProfileContent(
     onSettingsClick: () -> Unit = {},
     onReviewClick: (reviewId: String) -> Unit = {},
     onAddFavouriteClick: (slotIndex: Int) -> Unit = {},
-    onRemoveFavourite: (String) -> Unit = {}
+    onRemoveFavourite: (String) -> Unit = {},
+    onCollectionsClick: () -> Unit = {}
 ) {
     TerminalScreen {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -117,7 +140,8 @@ fun ProfileContent(
                         currentUserId = currentUserId,
                         onReviewClick = onReviewClick,
                         onAddFavouriteClick = onAddFavouriteClick,
-                        onRemoveFavourite = onRemoveFavourite
+                        onRemoveFavourite = onRemoveFavourite,
+                        onCollectionsClick = onCollectionsClick
                     )
                 }
             }
@@ -134,7 +158,8 @@ private fun ProfileBody(
     currentUserId: String?,
     onReviewClick: (reviewId: String) -> Unit,
     onAddFavouriteClick: (slotIndex: Int) -> Unit,
-    onRemoveFavourite: (String) -> Unit
+    onRemoveFavourite: (String) -> Unit,
+    onCollectionsClick: () -> Unit
 ) {
     Box(
         modifier = Modifier
@@ -195,6 +220,13 @@ private fun ProfileBody(
                 onRemoveFavourite = onRemoveFavourite
             )
 
+            Spacer(Modifier.height(Spacing.md))
+
+            WireButton(
+                text = "коллекции",
+                onClick = onCollectionsClick
+            )
+
             Spacer(Modifier.height(Spacing.xl))
 
             SectionHeader(text = if (isOwnProfile) "мои отзывы" else "отзывы")
@@ -217,4 +249,3 @@ private fun ProfileBody(
         }
     }
 }
-

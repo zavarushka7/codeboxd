@@ -30,7 +30,7 @@ android {
 dependencies {
     // Core-модули
 
-
+    implementation(project(":feature:collection"))
     implementation(project(":feature:favourite_picker"))
     implementation(project(":feature:search"))
     implementation(project(":core:model"))

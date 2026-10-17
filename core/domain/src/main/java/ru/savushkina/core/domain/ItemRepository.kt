@@ -13,4 +13,5 @@ interface ItemRepository {
     suspend fun getItemsByType(type: String): List<Item>
     suspend fun getTopRated(): List<Item>
     suspend fun getLowestRated(): List<Item>
+    suspend fun searchByType(type: String): List<Item>
 }

@@ -36,9 +36,12 @@ class ProfileViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val targetUserId: String? = savedStateHandle.get<String>("userId")
-    val currentUserId: String? = authRepository.currentUserId
 
-    val isOwnProfile: Boolean = targetUserId == null || targetUserId == currentUserId
+    val currentUserId: String?
+        get() = authRepository.currentUserId
+
+    val isOwnProfile: Boolean
+        get() = targetUserId == null || targetUserId == currentUserId
 
     private val _uiState = MutableStateFlow<ProfileUiState>(ProfileUiState.Loading)
     val uiState = _uiState.asStateFlow()
@@ -50,13 +53,13 @@ class ProfileViewModel @Inject constructor(
     val favourites = _favourites.asStateFlow()
 
     init {
-        val uid = targetUserId ?: currentUserId
+        val uid = targetUserId ?: authRepository.currentUserId
 
         if (uid == null) {
             _uiState.value = ProfileUiState.Error("Не авторизован")
         } else {
             viewModelScope.launch {
-                val user = if (isOwnProfile) {
+                val user = if (targetUserId == null || targetUserId == authRepository.currentUserId) {
                     userRepository.refresh(uid).getOrNull()
                 } else {
                     userRepository.getUser(uid)
@@ -81,14 +84,14 @@ class ProfileViewModel @Inject constructor(
     }
 
     fun addFavourite(itemId: String) {
-        val uid = targetUserId ?: currentUserId ?: return
+        val uid = targetUserId ?: authRepository.currentUserId ?: return
         viewModelScope.launch {
             favouriteRepository.addFavourite(uid, itemId)
         }
     }
 
     fun removeFavourite(itemId: String) {
-        val uid = targetUserId ?: currentUserId ?: return
+        val uid = targetUserId ?: authRepository.currentUserId ?: return
         viewModelScope.launch {
             favouriteRepository.removeFavourite(uid, itemId)
         }

@@ -41,3 +41,4 @@ include(":feature:review")
 include(":feature:search")
 include(":feature:favourite_picker")
 
+include(":feature:collection")

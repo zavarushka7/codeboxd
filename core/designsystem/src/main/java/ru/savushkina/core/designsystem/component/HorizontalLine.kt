@@ -32,19 +32,3 @@ fun HorizontalLine(
         )
     }
 }
-@Preview(showBackground = true, backgroundColor = 0xFF000000)
-@Composable
-private fun HorizontalLinePreview() {
-    CodeboxTheme {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.background)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            HorizontalLine()
-            HorizontalLine(accent = true)
-        }
-    }
-}

@@ -11,17 +11,21 @@ import kotlinx.coroutines.flow.stateIn
 import ru.savushkina.core.domain.AuthRepository
 import ru.savushkina.core.domain.SessionRepository
 import ru.savushkina.core.model.SessionState
+import ru.savushkina.core.navigation.Routes
+
 import javax.inject.Inject
 
 @HiltViewModel
 class SessionViewModel @Inject constructor(
     sessionRepository: SessionRepository,
-    authRepository: AuthRepository
+    private val authRepository: AuthRepository
 ) : ViewModel() {
 
     val sessionState: StateFlow<SessionState> = sessionRepository.sessionState
 
-    val currentUserId: String? = authRepository.currentUserId
+    /** get() — читает актуальное значение при каждом обращении. */
+    val currentUserId: String?
+        get() = authRepository.currentUserId
 
     val navTarget: StateFlow<String?> = sessionRepository.sessionState
         .map { state ->

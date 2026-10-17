@@ -14,9 +14,15 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.navArgument
+import com.example.feature.collection.ArrayPickerScreen
+import com.example.feature.collection.CollectionPickerScreen
+import com.example.feature.collection.CollectionTypePickerScreen
+import com.example.feature.collection.CreateCollectionScreen
 import ru.savushkina.core.designsystem.pattern.TerminalBottomBar
-
+import ru.savushkina.core.navigation.Routes
 import ru.savushkina.feature.auth.AuthScreen
+import ru.savushkina.feature.collection.CollectionDetailScreen
+import ru.savushkina.feature.collection.CollectionsListScreen
 import ru.savushkina.feature.details.DetailsScreen
 import ru.savushkina.feature.favourite_picker.FavouritePickerScreen
 import ru.savushkina.feature.feed.FeedScreen
@@ -214,6 +220,9 @@ fun CodeboxNavHost(
                     onAddFavouriteClick = {
                         navController.navigate(Routes.FAVOURITE_PICKER)
                     },
+                    onCollectionsClick = { userId ->
+                        navController.navigate(Routes.collections(userId))
+                    },
                     viewModel = profileViewModel
                 )
             }
@@ -229,6 +238,9 @@ fun CodeboxNavHost(
                         navController.navigate(Routes.reviewDetail(reviewId))
                     },
                     onAddFavouriteClick = {},
+                    onCollectionsClick = { userId ->
+                        navController.navigate(Routes.collections(userId))
+                    },
                     viewModel = hiltViewModel()
                 )
             }
@@ -253,6 +265,100 @@ fun CodeboxNavHost(
                             popUpTo(Routes.SETTINGS) { inclusive = true }
                         }
                     }
+                )
+            }
+
+            composable(
+                route = Routes.COLLECTIONS,
+                arguments = listOf(
+                    navArgument("userId") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    }
+                )
+            ) {
+                CollectionsListScreen(
+                    onBack = { navController.popBackStack() },
+                    onCollectionClick = { id ->
+                        navController.navigate(Routes.collectionDetail(id))
+                    },
+                    onCreateClick = {
+                        navController.navigate(Routes.COLLECTION_CREATE)
+                    }
+                )
+            }
+
+            composable(Routes.COLLECTION_CREATE) { entry ->
+                CreateCollectionScreen(
+                    backStackEntry = entry,
+                    onBack = { navController.popBackStack() },
+                    onListCreated = { id ->
+                        navController.navigate(Routes.collectionDetail(id)) {
+                            popUpTo(Routes.COLLECTIONS) { inclusive = false }
+                        }
+                    },
+                    onGoToTypePicker = {
+                        navController.navigate(Routes.COLLECTION_TYPE_PICKER)
+                    },
+                    onGoToArrayPicker = { name, type ->
+                        navController.navigate(Routes.collectionArrayPicker(name, type))
+                    }
+                )
+            }
+
+            composable(Routes.COLLECTION_TYPE_PICKER) {
+                CollectionTypePickerScreen(
+                    onBack = { navController.popBackStack() },
+                    onTypeSelected = { type ->
+                        navController.previousBackStackEntry
+                            ?.savedStateHandle
+                            ?.set("selected_type", type)
+                        navController.popBackStack()
+                    }
+                )
+            }
+
+            composable(
+                route = Routes.COLLECTION_ARRAY_PICKER,
+                arguments = listOf(
+                    navArgument("name") { type = NavType.StringType; defaultValue = "" },
+                    navArgument("type") { type = NavType.StringType; defaultValue = "" }
+                )
+            ) {
+                ArrayPickerScreen(
+                    onBack = { navController.popBackStack() },
+                    onCreated = { id ->
+                        navController.navigate(Routes.collectionDetail(id)) {
+                            popUpTo(Routes.COLLECTIONS) { inclusive = false }
+                        }
+                    }
+                )
+            }
+
+            composable(
+                route = Routes.COLLECTION_DETAIL,
+                arguments = listOf(navArgument("collectionId") { type = NavType.StringType })
+            ) {
+                CollectionDetailScreen(
+                    onBack = { navController.popBackStack() },
+                    onItemClick = { itemId -> navController.navigate(Routes.details(itemId)) },
+                    onAddItemClick = { collectionId ->
+                        navController.navigate(Routes.collectionPicker(collectionId))
+                    },
+                    onDeleted = {
+                        navController.popBackStack(Routes.COLLECTIONS, inclusive = false)
+                    }
+                )
+            }
+
+            composable(
+                route = Routes.COLLECTION_PICKER,
+                arguments = listOf(navArgument("collectionId") { type = NavType.StringType })
+            ) {
+                CollectionPickerScreen(
+                    onBack = { navController.popBackStack() },
+                    onItemAdded = { navController.popBackStack() }
                 )
             }
         }

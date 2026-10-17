@@ -31,7 +31,15 @@ class ItemRepositoryImpl @Inject constructor(
             }
         awaitClose { listener.remove() }
     }
-
+    override suspend fun searchByType(type: String): List<Item> = runCatchingCancellable {
+        val snapshot = firestore.collection(COLLECTION)
+            .whereEqualTo("type", type)
+            .get()
+            .await()
+        snapshot.documents.mapNotNull { doc ->
+            runCatching { doc.toItemOrNull() }.getOrNull()
+        }
+    }.getOrDefault(emptyList())
     override suspend fun getItemById(itemId: String): Item? = runCatchingCancellable {
         val doc = firestore.collection(COLLECTION).document(itemId).get().await()
         if (!doc.exists()) null else doc.toItemOrNull()

@@ -40,19 +40,3 @@ fun AlertBox(
     }
 }
 
-@Preview(showBackground = true, backgroundColor = 0xFF000000)
-@Composable
-private fun AlertBoxPreview() {
-    CodeboxTheme {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.background)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            AlertBox(text = "invalid credentials")
-            AlertBox(text = "user_not_found")
-        }
-    }
-}

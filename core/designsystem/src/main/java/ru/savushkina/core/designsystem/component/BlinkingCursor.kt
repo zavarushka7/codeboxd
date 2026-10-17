@@ -39,16 +39,3 @@ fun BlinkingCursor(modifier: Modifier = Modifier) {
     )
 }
 
-@Preview(showBackground = true, backgroundColor = 0xFF000000)
-@Composable
-private fun BlinkingCursorPreview() {
-    CodeboxTheme {
-        Box(
-            modifier = Modifier
-                .background(MaterialTheme.colorScheme.background)
-                .padding(16.dp)
-        ) {
-            BlinkingCursor()
-        }
-    }
-}

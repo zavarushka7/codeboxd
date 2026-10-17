@@ -25,20 +25,3 @@ fun SectionHeader(
     )
 }
 
-@Preview(showBackground = true, backgroundColor = 0xFF000000)
-@Composable
-private fun SectionHeaderPreview() {
-    CodeboxTheme {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.background)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            SectionHeader(text = "codebox")
-            SectionHeader(text = "user_profile")
-            SectionHeader(text = "select_role")
-        }
-    }
-}
