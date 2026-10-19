@@ -1,6 +1,13 @@
 package ru.savushkina.feature.auth
 
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
@@ -13,14 +20,18 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import ru.savushkina.core.designsystem.component.*
+import ru.savushkina.core.designsystem.component.AlertBox
+import ru.savushkina.core.designsystem.component.BlinkingCursor
+import ru.savushkina.core.designsystem.component.PasswordVisibilityToggle
+import ru.savushkina.core.designsystem.component.SectionHeader
+import ru.savushkina.core.designsystem.component.WireButton
+import ru.savushkina.core.designsystem.component.WireTextField
 import ru.savushkina.core.designsystem.pattern.TerminalScreen
 import ru.savushkina.core.designsystem.theme.CodeboxTheme
 import ru.savushkina.core.designsystem.theme.Spacing
 
 @Composable
 fun AuthScreen(
-    onAuthSuccess: () -> Unit,
     viewModel: AuthViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -29,8 +40,8 @@ fun AuthScreen(
         onEmailChange = viewModel::onEmailChange,
         onPasswordChange = viewModel::onPasswordChange,
         onTogglePassword = viewModel::togglePasswordVisibility,
-        onSignIn = { viewModel.signIn(onAuthSuccess) },
-        onSignUp = { viewModel.signUp(onAuthSuccess) }
+        onSignIn = viewModel::signIn,
+        onSignUp = viewModel::signUp
     )
 }
 
@@ -44,13 +55,10 @@ fun AuthContent(
     onSignUp: () -> Unit = {}
 ) {
     TerminalScreen {
-        // Показываем загрузку при isLoading, а также после успеха (isDone),
-        // чтобы форма не мелькнула до переключения SessionState.
+        // isLoading || isDone — держим спиннер до навигации по navTarget,
+        // чтобы форма не мелькнула и не была кликабельной повторно.
         if (state.isLoading || state.isDone) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 BlinkingCursor()
             }
         } else {
@@ -73,8 +81,7 @@ fun AuthContent(
                     WireTextField(
                         value = state.email,
                         onValueChange = onEmailChange,
-                        label = "email",
-                        enabled = !state.isLoading
+                        label = "email"
                     )
 
                     Spacer(Modifier.height(Spacing.md))
@@ -102,15 +109,9 @@ fun AuthContent(
 
                     Spacer(Modifier.height(Spacing.xl))
 
-                    WireButton(
-                        text = "войти",
-                        onClick = onSignIn,
-                    )
+                    WireButton(text = "войти", onClick = onSignIn)
                     Spacer(Modifier.height(Spacing.sm))
-                    WireButton(
-                        text = "зарегистрироваться",
-                        onClick = onSignUp,
-                    )
+                    WireButton(text = "зарегистрироваться", onClick = onSignUp)
                 }
             }
         }
@@ -123,43 +124,3 @@ private fun AuthPreviewEmpty() {
     CodeboxTheme { AuthContent(state = AuthState()) }
 }
 
-@Preview(showBackground = true, backgroundColor = 0xFF000000)
-@Composable
-private fun AuthPreviewFilled() {
-    CodeboxTheme {
-        AuthContent(
-            state = AuthState(
-                email = "dev@codebox.app",
-                password = "secret123"
-            )
-        )
-    }
-}
-
-@Preview(showBackground = true, backgroundColor = 0xFF000000)
-@Composable
-private fun AuthPreviewError() {
-    CodeboxTheme {
-        AuthContent(
-            state = AuthState(
-                email = "dev@codebox.app",
-                password = "wrong",
-                error = "Неверный email или пароль"
-            )
-        )
-    }
-}
-
-@Preview(showBackground = true, backgroundColor = 0xFF000000)
-@Composable
-private fun AuthPreviewLoading() {
-    CodeboxTheme {
-        AuthContent(
-            state = AuthState(
-                email = "dev@codebox.app",
-                password = "secret123",
-                isLoading = true
-            )
-        )
-    }
-}

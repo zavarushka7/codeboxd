@@ -34,10 +34,12 @@ fun CollectionPickerScreen(
 ) {
     val query by viewModel.query.collectAsStateWithLifecycle()
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val error by viewModel.error.collectAsStateWithLifecycle()
 
     CollectionPickerContent(
         query = query,
         state = state,
+        error = error,
         onQueryChange = viewModel::onQueryChange,
         onBack = onBack,
         onItemSelected = { itemId -> viewModel.addItem(itemId, onItemAdded) }
@@ -48,6 +50,7 @@ fun CollectionPickerScreen(
 fun CollectionPickerContent(
     query: String,
     state: CollectionPickerUiState,
+    error: String? = null,
     onQueryChange: (String) -> Unit = {},
     onBack: () -> Unit = {},
     onItemSelected: (String) -> Unit = {}
@@ -73,6 +76,11 @@ fun CollectionPickerContent(
                 label = "поиск",
                 placeholder = "начните вводить"
             )
+
+            error?.let {
+                Spacer(Modifier.height(Spacing.md))
+                AlertBox(text = it)
+            }
 
             Spacer(Modifier.height(Spacing.md))
 

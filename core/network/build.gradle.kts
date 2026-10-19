@@ -24,6 +24,9 @@ dependencies {
     implementation(libs.firebase.auth)
     implementation(libs.firebase.firestore)
 
+    // .await() из kotlinx-coroutines-play-services
+    implementation(libs.kotlinx.coroutines.play.services)
+
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
 }

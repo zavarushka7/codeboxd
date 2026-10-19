@@ -4,6 +4,7 @@ import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
+import ru.savushkina.core.data.AuthErrorMapper
 import ru.savushkina.core.data.AuthRepositoryImpl
 import ru.savushkina.core.data.CollectionRepositoryImpl
 import ru.savushkina.core.data.FavouriteRepositoryImpl
@@ -14,6 +15,7 @@ import ru.savushkina.core.data.SettingsRepositoryImpl
 import ru.savushkina.core.data.UserRepositoryImpl
 import ru.savushkina.core.domain.AuthRepository
 import ru.savushkina.core.domain.CollectionRepository
+import ru.savushkina.core.domain.ErrorMapper
 import ru.savushkina.core.domain.FavouriteRepository
 import ru.savushkina.core.domain.ItemRepository
 import ru.savushkina.core.domain.ReviewRepository
@@ -26,16 +28,13 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 abstract class DataModule {
 
-    @Binds
-    @Singleton
+    @Binds @Singleton
     abstract fun bindAuthRepository(impl: AuthRepositoryImpl): AuthRepository
 
-    @Binds
-    @Singleton
+    @Binds @Singleton
     abstract fun bindUserRepository(impl: UserRepositoryImpl): UserRepository
 
-    @Binds
-    @Singleton
+    @Binds @Singleton
     abstract fun bindSessionRepository(impl: SessionRepositoryImpl): SessionRepository
 
     @Binds @Singleton
@@ -44,17 +43,17 @@ abstract class DataModule {
     @Binds @Singleton
     abstract fun bindReviewRepository(impl: ReviewRepositoryImpl): ReviewRepository
 
-    @Binds
-    @Singleton
+    @Binds @Singleton
     abstract fun bindSettingsRepository(impl: SettingsRepositoryImpl): SettingsRepository
 
-    @Binds
-    @Singleton
+    @Binds @Singleton
     abstract fun bindFavouriteRepository(impl: FavouriteRepositoryImpl): FavouriteRepository
 
-    @Binds
-    @Singleton
+    @Binds @Singleton
     abstract fun bindCollectionRepository(
         impl: CollectionRepositoryImpl
     ): CollectionRepository
+
+    @Binds @Singleton
+    abstract fun bindErrorMapper(impl: AuthErrorMapper): ErrorMapper
 }

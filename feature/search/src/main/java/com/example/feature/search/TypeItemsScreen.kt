@@ -1,4 +1,4 @@
-package ru.savushkina.feature.search
+package com.example.feature.search
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -14,9 +14,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ru.savushkina.core.designsystem.component.*
 import ru.savushkina.core.designsystem.pattern.TerminalScreen
 import ru.savushkina.core.designsystem.pattern.TerminalTopBar
-import ru.savushkina.core.designsystem.theme.CodeboxTheme
 import ru.savushkina.core.designsystem.theme.Spacing
-import ru.savushkina.core.model.Item
 
 @Composable
 fun TypeItemsScreen(

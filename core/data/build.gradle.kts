@@ -23,8 +23,11 @@ dependencies {
     implementation(project(":core:domain"))
     implementation(project(":core:common"))
 
-
     implementation(libs.androidx.core.ktx)
+
+    // Корутины — явно, чтобы не зависеть от транзитивных
+    implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.kotlinx.coroutines.android)
 
     implementation(platform(libs.firebase.bom))
     implementation(libs.androidx.datastore.core)
@@ -36,7 +39,4 @@ dependencies {
     ksp(libs.hilt.compiler)
 
     implementation(libs.datastore.preferences)
-
-    // Hilt
-
 }

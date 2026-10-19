@@ -7,8 +7,18 @@ import ru.savushkina.core.model.User
 interface UserRepository {
     val currentUser: StateFlow<User?>
 
+    /**
+     * Внутреннее состояние загрузки профиля.
+     * Используется SessionRepositoryImpl для построения SessionState.
+     * Не является частью доменного контракта — помечено как "internal"
+     * на уровне документации; в идеале — отдельный SessionDataSource.
+     */
+    val profileLoading: StateFlow<Boolean>
+    val profileError: StateFlow<Throwable?>
+
     suspend fun refresh(uid: String): Result<User>
     suspend fun getUser(uid: String): User?
+
     suspend fun ensureUserExists(uid: String, email: String): Result<User>
 
     suspend fun saveOnboarding(

@@ -2,9 +2,21 @@ package ru.savushkina.feature.review
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.FloatingActionButton
@@ -15,14 +27,27 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import ru.savushkina.core.designsystem.component.*
+import ru.savushkina.core.designsystem.component.AlertBox
+import ru.savushkina.core.designsystem.component.BlinkingCursor
+import ru.savushkina.core.designsystem.component.CommentRow
+import ru.savushkina.core.designsystem.component.HorizontalLine
+import ru.savushkina.core.designsystem.component.LabelText
+import ru.savushkina.core.designsystem.component.RatingStars
+import ru.savushkina.core.designsystem.component.SectionHeader
+import ru.savushkina.core.designsystem.component.WireAvatar
+import ru.savushkina.core.designsystem.component.WireButton
+import ru.savushkina.core.designsystem.component.WireFrame
+import ru.savushkina.core.designsystem.component.WireTextField
 import ru.savushkina.core.designsystem.pattern.TerminalScreen
 import ru.savushkina.core.designsystem.pattern.TerminalTopBar
 import ru.savushkina.core.designsystem.theme.CodeboxTheme
@@ -34,6 +59,7 @@ import ru.savushkina.core.model.ReviewComment
 fun ReviewDetailScreen(
     onBack: () -> Unit,
     onAuthorClick: (userId: String) -> Unit,
+    currentUserId: String?,
     viewModel: ReviewDetailViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -43,6 +69,7 @@ fun ReviewDetailScreen(
     val isSending by viewModel.isSendingComment.collectAsStateWithLifecycle()
     val canLoadMore by viewModel.canLoadMoreComments.collectAsStateWithLifecycle()
     val isLoadingMore by viewModel.isLoadingMoreComments.collectAsStateWithLifecycle()
+    val error by viewModel.error.collectAsStateWithLifecycle()
 
     ReviewDetailContent(
         state = state,
@@ -52,11 +79,12 @@ fun ReviewDetailScreen(
         isSendingComment = isSending,
         canLoadMoreComments = canLoadMore,
         isLoadingMoreComments = isLoadingMore,
-        currentUserId = viewModel.currentUserId,
+        currentUserId = currentUserId,
+        error = error,
         onBack = onBack,
         onAuthorClick = onAuthorClick,
         onCommentDraftChange = viewModel::onCommentDraftChange,
-        onSubmitComment = viewModel::submitComment,
+        onSubmitComment = { onDone -> viewModel.submitComment(onDone) },
         onDeleteComment = viewModel::deleteComment,
         onLoadMoreComments = viewModel::loadMoreComments
     )
@@ -72,14 +100,16 @@ fun ReviewDetailContent(
     canLoadMoreComments: Boolean = false,
     isLoadingMoreComments: Boolean = false,
     currentUserId: String? = null,
+    error: String? = null,
     onBack: () -> Unit = {},
     onAuthorClick: (String) -> Unit = {},
     onCommentDraftChange: (String) -> Unit = {},
-    onSubmitComment: () -> Unit = {},
+    onSubmitComment: (onDone: () -> Unit) -> Unit = { it() },
     onDeleteComment: (String) -> Unit = {},
     onLoadMoreComments: () -> Unit = {}
 ) {
-    var inputVisible by remember { mutableStateOf(false) }
+    // rememberSaveable — переживает поворот экрана
+    var inputVisible by rememberSaveable { mutableStateOf(false) }
 
     TerminalScreen {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -97,93 +127,89 @@ fun ReviewDetailContent(
                 HorizontalLine()
                 Spacer(Modifier.height(Spacing.md))
 
-                // Пока не готов отзыв ИЛИ комментарии — показываем загрузку
                 val isReady = state is ReviewDetailUiState.Success && commentsLoaded
 
                 if (!isReady) {
                     when (state) {
                         is ReviewDetailUiState.Error -> {
-                            Box(
-                                Modifier.fillMaxSize(),
-                                contentAlignment = Alignment.Center
-                            ) {
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 AlertBox(text = state.message)
                             }
                         }
                         else -> {
-                            Box(
-                                Modifier.fillMaxSize(),
-                                contentAlignment = Alignment.Center
-                            ) {
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 BlinkingCursor()
                             }
                         }
                     }
-                } else {
-                    val review = (state as ReviewDetailUiState.Success).review
+                } else if (state is ReviewDetailUiState.Success) {
+                    val review = state.review
                     val isMine = currentUserId != null && review.userId == currentUserId
 
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .verticalScroll(rememberScrollState())
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(bottom = 100.dp),
+                        verticalArrangement = Arrangement.spacedBy(Spacing.xs)
                     ) {
-                        // ── Карточка отзыва ──
-                        WireFrame(
-                            modifier = Modifier.fillMaxWidth(),
-                            accent = isMine
-                        ) {
-                            Column(modifier = Modifier.padding(Spacing.md)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(
-                                        modifier = Modifier.clickable {
-                                            onAuthorClick(review.userId)
-                                        }
-                                    ) {
-                                        WireAvatar(
-                                            avatarBase64 = review.authorAvatarBase64,
-                                            fallbackText = review.authorName
-                                                .take(2).uppercase().ifBlank { "??" },
-                                            size = 40.dp
-                                        )
-                                    }
-                                    Spacer(Modifier.width(Spacing.sm))
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = review.authorName.ifBlank { "аноним" },
-                                            style = MaterialTheme.typography.titleMedium,
-                                            color = MaterialTheme.colorScheme.primary,
+                        item(key = "review_card") {
+                            WireFrame(
+                                modifier = Modifier.fillMaxWidth(),
+                                accent = isMine
+                            ) {
+                                Column(modifier = Modifier.padding(Spacing.md)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Box(
                                             modifier = Modifier.clickable {
                                                 onAuthorClick(review.userId)
                                             }
-                                        )
-                                        if (review.itemName.isNotBlank()) {
-                                            Spacer(Modifier.height(Spacing.xxs))
-                                            LabelText(text = review.itemName)
+                                        ) {
+                                            WireAvatar(
+                                                avatarBase64 = review.authorAvatarBase64,
+                                                fallbackText = review.authorName
+                                                    .take(2).uppercase().ifBlank { "??" },
+                                                size = 40.dp
+                                            )
                                         }
+                                        Spacer(Modifier.width(Spacing.sm))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = review.authorName.ifBlank { "аноним" },
+                                                style = MaterialTheme.typography.titleMedium,
+                                                color = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.clickable {
+                                                    onAuthorClick(review.userId)
+                                                }
+                                            )
+                                            if (review.itemName.isNotBlank()) {
+                                                Spacer(Modifier.height(Spacing.xxs))
+                                                LabelText(text = review.itemName)
+                                            }
+                                        }
+                                        RatingStars(rating = review.rating, size = 16)
                                     }
-                                    RatingStars(rating = review.rating, size = 16)
-                                }
-                                if (review.hasComment) {
-                                    Spacer(Modifier.height(Spacing.md))
-                                    Text(
-                                        text = review.comment,
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        color = MaterialTheme.colorScheme.onBackground
-                                    )
+                                    if (review.hasComment) {
+                                        Spacer(Modifier.height(Spacing.md))
+                                        Text(
+                                            text = review.comment,
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            color = MaterialTheme.colorScheme.onBackground
+                                        )
+                                    }
                                 }
                             }
                         }
 
-                        Spacer(Modifier.height(Spacing.xl))
-
-                        SectionHeader(text = "комментарии")
-                        Spacer(Modifier.height(Spacing.md))
+                        item(key = "comments_header") {
+                            Spacer(Modifier.height(Spacing.lg))
+                            SectionHeader(text = "комментарии")
+                        }
 
                         if (comments.isEmpty()) {
-                            LabelText(text = "// пока нет комментариев")
+                            item(key = "comments_empty") {
+                                LabelText(text = "// пока нет комментариев")
+                            }
                         } else {
-                            comments.forEach { c ->
+                            items(comments, key = { it.id }) { c ->
                                 val isCommentMine =
                                     currentUserId != null && c.authorId == currentUserId
                                 CommentRow(
@@ -193,26 +219,24 @@ fun ReviewDetailContent(
                                     onDelete = { onDeleteComment(c.id) },
                                     onAuthorClick = onAuthorClick
                                 )
-                                Spacer(Modifier.height(Spacing.xs))
                             }
                         }
 
                         if (canLoadMoreComments) {
-                            Spacer(Modifier.height(Spacing.md))
-                            WireButton(
-                                text = if (isLoadingMoreComments) "загрузка..."
-                                else "показать ещё",
-                                onClick = onLoadMoreComments,
-                                enabled = !isLoadingMoreComments
-                            )
+                            item(key = "load_more") {
+                                Spacer(Modifier.height(Spacing.md))
+                                WireButton(
+                                    text = if (isLoadingMoreComments) "загрузка..."
+                                    else "показать ещё",
+                                    onClick = onLoadMoreComments,
+                                    enabled = !isLoadingMoreComments
+                                )
+                            }
                         }
-
-                        Spacer(Modifier.height(100.dp))
                     }
                 }
             }
 
-            // FAB
             if (state is ReviewDetailUiState.Success && commentsLoaded) {
                 FloatingActionButton(
                     onClick = { inputVisible = true },
@@ -234,40 +258,39 @@ fun ReviewDetailContent(
                     value = commentDraft,
                     onValueChange = onCommentDraftChange,
                     onDismiss = { inputVisible = false },
-                    onSubmit = {
-                        onSubmitComment()
-                        inputVisible = false
-                    },
-                    isSubmitting = isSendingComment
+                    onSubmit = { onSubmitComment { inputVisible = false } },
+                    isSubmitting = isSendingComment,
+                    error = error
                 )
             }
         }
     }
 }
+
 @Composable
 private fun CommentInputDialog(
     value: String,
     onValueChange: (String) -> Unit,
     onDismiss: () -> Unit,
     onSubmit: () -> Unit,
-    isSubmitting: Boolean
+    isSubmitting: Boolean,
+    error: String? = null
 ) {
-    androidx.compose.ui.window.Dialog(
+    Dialog(
         onDismissRequest = onDismiss,
-        properties = androidx.compose.ui.window.DialogProperties(
-            usePlatformDefaultWidth = false
-        )
+        properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth(0.9f)
                 .wrapContentHeight()
-                .background(MaterialTheme.colorScheme.background)
+                .imePadding()
         ) {
             WireFrame(modifier = Modifier.fillMaxWidth()) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.background)   // ← непрозрачный фон
                         .padding(Spacing.md)
                 ) {
                     LabelText(text = "// новый комментарий")
@@ -282,9 +305,13 @@ private fun CommentInputDialog(
                         enabled = !isSubmitting
                     )
 
+                    error?.let {
+                        Spacer(Modifier.height(Spacing.md))
+                        AlertBox(text = it)
+                    }
+
                     Spacer(Modifier.height(Spacing.md))
 
-                    // Кнопки в две колонки
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
@@ -293,8 +320,7 @@ private fun CommentInputDialog(
                             WireButton(
                                 text = "отмена",
                                 onClick = onDismiss,
-                                enabled = !isSubmitting,
-                                modifier = Modifier.fillMaxWidth()
+                                enabled = !isSubmitting
                             )
                         }
                         Box(modifier = Modifier.weight(1f)) {
@@ -302,8 +328,7 @@ private fun CommentInputDialog(
                                 text = if (isSubmitting) "..." else "отправить",
                                 onClick = onSubmit,
                                 accent = true,
-                                enabled = !isSubmitting && value.isNotBlank(),
-                                modifier = Modifier.fillMaxWidth()
+                                enabled = !isSubmitting && value.isNotBlank()
                             )
                         }
                     }
@@ -312,6 +337,7 @@ private fun CommentInputDialog(
         }
     }
 }
+
 @Preview(showBackground = true, backgroundColor = 0xFF000000)
 @Composable
 private fun ReviewDetailPreview() {
@@ -324,7 +350,8 @@ private fun ReviewDetailPreview() {
                     authorName = "Алена",
                     itemName = "Kotlin"
                 )
-            )
+            ),
+            commentsLoaded = true
         )
     }
 }

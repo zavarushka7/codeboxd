@@ -6,6 +6,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import ru.savushkina.core.common.runCatchingCancellable
 import ru.savushkina.core.domain.ItemRepository
 import javax.inject.Inject
 
@@ -27,7 +28,7 @@ class CollectionTypePickerViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            runCatching { itemRepository.getTypes() }
+            runCatchingCancellable { itemRepository.getTypes() }
                 .onSuccess { _uiState.value = CollectionTypePickerUiState.Success(it) }
                 .onFailure {
                     _uiState.value = CollectionTypePickerUiState.Error(

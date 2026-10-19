@@ -1,7 +1,15 @@
 package ru.savushkina.core.designsystem.component
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ThumbDown
 import androidx.compose.material.icons.filled.ThumbUp
@@ -10,10 +18,12 @@ import androidx.compose.material.icons.outlined.ThumbUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import ru.savushkina.core.designsystem.theme.Spacing
 import ru.savushkina.core.model.Reaction
@@ -33,7 +43,6 @@ fun ReviewRow(
 ) {
     WireFrame(
         modifier = modifier.fillMaxWidth(),
-        // моя рамка — акцентная, чужая — серая
         accent = isMine
     ) {
         Column(
@@ -42,7 +51,6 @@ fun ReviewRow(
                 .clickable(onClick = onCardClick)
                 .padding(Spacing.md)
         ) {
-            // ── Автор + звёзды ──
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(modifier = Modifier.clickable(onClick = onAuthorClick)) {
                     WireAvatar(
@@ -56,6 +64,8 @@ fun ReviewRow(
                     text = review.authorName.ifBlank { "аноним" },
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onBackground,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                     modifier = Modifier
                         .weight(1f)
                         .clickable(onClick = onAuthorClick)
@@ -94,7 +104,9 @@ fun ReviewRow(
                 LabelText(
                     text = "комментарии",
                     color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.clickable(onClick = onCommentsClick)
+                    modifier = Modifier
+                        .clickable(onClick = onCommentsClick)
+                        .minimumInteractiveComponentSize()
                 )
             }
         }
@@ -110,7 +122,9 @@ private fun ReactionButton(
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.clickable(onClick = onClick)
+        modifier = Modifier
+            .minimumInteractiveComponentSize()
+            .clickable(onClick = onClick)
     ) {
         Icon(
             imageVector = icon,

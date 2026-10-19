@@ -1,9 +1,20 @@
 package ru.savushkina.feature.details
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -14,7 +25,16 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import ru.savushkina.core.designsystem.component.*
+import ru.savushkina.core.designsystem.component.AlertBox
+import ru.savushkina.core.designsystem.component.BlinkingCursor
+import ru.savushkina.core.designsystem.component.HorizontalLine
+import ru.savushkina.core.designsystem.component.IconKey
+import ru.savushkina.core.designsystem.component.LabelText
+import ru.savushkina.core.designsystem.component.RatingStars
+import ru.savushkina.core.designsystem.component.ReviewRow
+import ru.savushkina.core.designsystem.component.SectionHeader
+import ru.savushkina.core.designsystem.component.WireButton
+import ru.savushkina.core.designsystem.component.WireFrame
 import ru.savushkina.core.designsystem.pattern.TerminalScreen
 import ru.savushkina.core.designsystem.pattern.TerminalTopBar
 import ru.savushkina.core.designsystem.theme.CodeboxTheme
@@ -30,6 +50,7 @@ fun DetailsScreen(
     onWriteReview: () -> Unit,
     onReviewClick: (reviewId: String) -> Unit,
     onAuthorClick: (userId: String) -> Unit,
+    currentUserId: String?,
     viewModel: DetailsViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -38,7 +59,7 @@ fun DetailsScreen(
     DetailsContent(
         state = state,
         myReactions = myReactions,
-        currentUserId = viewModel.currentUserId,
+        currentUserId = currentUserId,
         onBack = onBack,
         onWriteReview = onWriteReview,
         onReviewClick = onReviewClick,
@@ -121,95 +142,101 @@ private fun DetailsBody(
     val symbol = item.symbol
     val iconKey = item.iconKey
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(bottom = Spacing.xxl),
+        verticalArrangement = Arrangement.spacedBy(Spacing.sm)
     ) {
         // ── Заголовок айтема ──
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            WireFrame(modifier = Modifier.size(72.dp), accent = true) {
-                Box(Modifier.size(72.dp), contentAlignment = Alignment.Center) {
-                    when {
-                        !symbol.isNullOrBlank() -> Text(
-                            text = symbol,
-                            color = MaterialTheme.colorScheme.primary,
-                            style = MaterialTheme.typography.headlineMedium
-                        )
-                        !iconKey.isNullOrBlank() -> IconKey(
-                            iconKey = iconKey,
-                            modifier = Modifier.size(Sizes.iconLg)
-                        )
-                        else -> Text(
-                            text = item.fallbackText,
-                            color = MaterialTheme.colorScheme.primary,
-                            style = MaterialTheme.typography.headlineMedium
-                        )
+        item(key = "header") {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                WireFrame(modifier = Modifier.size(72.dp), accent = true) {
+                    Box(Modifier.size(72.dp), contentAlignment = Alignment.Center) {
+                        when {
+                            !symbol.isNullOrBlank() -> Text(
+                                text = symbol,
+                                color = MaterialTheme.colorScheme.primary,
+                                style = MaterialTheme.typography.headlineMedium
+                            )
+                            !iconKey.isNullOrBlank() -> IconKey(
+                                iconKey = iconKey,
+                                modifier = Modifier.size(Sizes.iconLg)
+                            )
+                            else -> Text(
+                                text = item.fallbackText,
+                                color = MaterialTheme.colorScheme.primary,
+                                style = MaterialTheme.typography.headlineMedium
+                            )
+                        }
                     }
                 }
-            }
 
-            Spacer(Modifier.width(Spacing.md))
+                Spacer(Modifier.width(Spacing.md))
 
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = item.name,
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                if (item.type.isNotBlank()) {
-                    Spacer(Modifier.height(Spacing.xxs))
-                    LabelText(text = item.type)
-                }
-                if (item.averageRating > 0) {
-                    Spacer(Modifier.height(Spacing.xs))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        RatingStars(rating = item.averageRating.toInt(), size = 16)
-                        Spacer(Modifier.width(Spacing.xs))
-                        Text(
-                            text = "%.1f".format(item.averageRating),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-        }
-
-        if (item.description.isNotBlank()) {
-            Spacer(Modifier.height(Spacing.lg))
-            WireFrame(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(Spacing.md)) {
-                    LabelText(text = "description")
-                    Spacer(Modifier.height(Spacing.xs))
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = item.description,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onBackground
+                        text = item.name,
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = MaterialTheme.colorScheme.primary
                     )
+                    if (item.type.isNotBlank()) {
+                        Spacer(Modifier.height(Spacing.xxs))
+                        LabelText(text = item.type)
+                    }
+                    if (item.averageRating > 0) {
+                        Spacer(Modifier.height(Spacing.xs))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            RatingStars(rating = item.averageRating.toInt(), size = 16)
+                            Spacer(Modifier.width(Spacing.xs))
+                            Text(
+                                text = "%.1f".format(item.averageRating),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                 }
             }
         }
 
-        Spacer(Modifier.height(Spacing.lg))
-
-        // ── Моя оценка ──
-        if (myReview != null) {
-            WireButton(text = "изменить мой отзыв", onClick = onWriteReview)
-        } else {
-            WireButton(text = "оценить", onClick = onWriteReview, accent = true)
+        // ── Описание ──
+        if (item.description.isNotBlank()) {
+            item(key = "description") {
+                WireFrame(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(Spacing.md)) {
+                        LabelText(text = "description")
+                        Spacer(Modifier.height(Spacing.xs))
+                        Text(
+                            text = item.description,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                    }
+                }
+            }
         }
 
-        Spacer(Modifier.height(Spacing.xl))
+        // ── Кнопка «оценить / изменить» ──
+        item(key = "write_review") {
+            if (myReview != null) {
+                WireButton(text = "изменить мой отзыв", onClick = onWriteReview)
+            } else {
+                WireButton(text = "оценить", onClick = onWriteReview, accent = true)
+            }
+        }
 
-        // ── Отзывы ──
-        SectionHeader(text = "отзывы")
-        Spacer(Modifier.height(Spacing.md))
+        // ── Заголовок отзывов ──
+        item(key = "reviews_header") {
+            Spacer(Modifier.height(Spacing.lg))
+            SectionHeader(text = "отзывы")
+        }
 
         if (reviews.isEmpty()) {
-            LabelText(text = "// пока нет отзывов")
+            item(key = "reviews_empty") {
+                LabelText(text = "// пока нет отзывов")
+            }
         } else {
-            reviews.forEach { review ->
+            items(reviews, key = { it.reviewId }) { review ->
                 val isMine = currentUserId != null && review.userId == currentUserId
                 ReviewRow(
                     review = review,
@@ -221,11 +248,8 @@ private fun DetailsBody(
                     onCommentsClick = { onReviewClick(review.reviewId) },
                     onAuthorClick = { onAuthorClick(review.userId) }
                 )
-                Spacer(Modifier.height(Spacing.sm))
             }
         }
-
-        Spacer(Modifier.height(Spacing.xxl))
     }
 }
 

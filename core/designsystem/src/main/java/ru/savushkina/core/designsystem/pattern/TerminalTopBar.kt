@@ -18,15 +18,36 @@ fun TerminalTopBar(
     left: (@Composable () -> Unit)? = null,
     right: (@Composable () -> Unit)? = null
 ) {
-    Row(
-        modifier = modifier.fillMaxWidth().padding(vertical = Spacing.sm),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = Spacing.sm)
     ) {
-        Box(modifier = Modifier.weight(1f)) { left?.invoke() }
-        LabelText(text = title)
-        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
-            right?.invoke()
+        // Left
+        if (left != null) {
+            Row(
+                modifier = Modifier.align(Alignment.CenterStart),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                left()
+            }
+        }
+
+        // Center (по абсолютному центру)
+        LabelText(
+            text = title,
+            modifier = Modifier.align(Alignment.Center)
+        )
+
+        // Right
+        if (right != null) {
+            Row(
+                modifier = Modifier.align(Alignment.CenterEnd),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                right()
+            }
         }
     }
 }

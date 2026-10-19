@@ -3,60 +3,56 @@ package ru.savushkina.core.designsystem.pattern
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.unit.dp
 import ru.savushkina.core.designsystem.component.HorizontalLine
 import ru.savushkina.core.designsystem.theme.Sizes
 
+enum class BottomTab(val route: String) {
+    FEED("feed"),
+    SEARCH("search"),
+    PROFILE("profile")
+}
+
 @Composable
 fun TerminalBottomBar(
-    currentRoute: String,
+    selectedTab: BottomTab?,
     onFeedClick: () -> Unit,
     onSearchClick: () -> Unit,
     onProfileClick: () -> Unit
 ) {
-    Column {
+    Column(modifier = Modifier.systemBarsPadding()) {
         HorizontalLine()
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(64.dp)
+                .height(Sizes.bottomBarHeight)
                 .background(MaterialTheme.colorScheme.background),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            BottomBarItem(
-                icon = Icons.Outlined.Home,
-                label = "feed",
-                selected = currentRoute == "feed",
-                onClick = onFeedClick
-            )
-            BottomBarItem(
-                icon = Icons.Outlined.Search,
-                label = "search",
-                selected = currentRoute == "search",
-                onClick = onSearchClick
-            )
-            BottomBarItem(
-                icon = Icons.Outlined.Person,
-                label = "profile",
-                selected = currentRoute == "profile",
-                onClick = onProfileClick
-            )
+            BottomBarItem(Icons.Outlined.Home, "feed",
+                selectedTab == BottomTab.FEED, onFeedClick)
+            BottomBarItem(Icons.Outlined.Search, "search",
+                selectedTab == BottomTab.SEARCH, onSearchClick)
+            BottomBarItem(Icons.Outlined.Person, "profile",
+                selectedTab == BottomTab.PROFILE, onProfileClick)
         }
     }
 }
@@ -68,13 +64,18 @@ private fun BottomBarItem(
     selected: Boolean,
     onClick: () -> Unit
 ) {
-    Icon(
-        imageVector = icon,
-        contentDescription = label,
-        tint = if (selected) MaterialTheme.colorScheme.primary
-        else MaterialTheme.colorScheme.onSurfaceVariant,
+    Box(
         modifier = Modifier
-            .size(Sizes.iconMd)
-            .clickable(onClick = onClick)
-    )
+            .minimumInteractiveComponentSize()
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            tint = if (selected) MaterialTheme.colorScheme.primary
+            else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(Sizes.iconMd)
+        )
+    }
 }

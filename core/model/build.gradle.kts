@@ -16,8 +16,6 @@ android {
 }
 
 dependencies {
-    implementation(libs.androidx.core.ktx)
-
-    implementation(platform(libs.firebase.bom))
-    implementation(libs.firebase.firestore)
+    // Чистые модели. Без Firebase, без UI, без корутин.
+    // Если понадобится @Parcelize — добавь `id("kotlin-parcelize")` в plugins.
 }

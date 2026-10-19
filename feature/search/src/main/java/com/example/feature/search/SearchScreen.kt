@@ -1,21 +1,25 @@
-package ru.savushkina.feature.search
+package com.example.feature.search
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ru.savushkina.core.designsystem.component.*
 import ru.savushkina.core.designsystem.pattern.TerminalScreen
-import ru.savushkina.core.designsystem.theme.CodeboxTheme
+import ru.savushkina.core.designsystem.theme.Sizes
 import ru.savushkina.core.designsystem.theme.Spacing
-import ru.savushkina.core.model.Item
 
 @Composable
 fun SearchScreen(
@@ -32,6 +36,7 @@ fun SearchScreen(
         query = query,
         state = state,
         onQueryChange = viewModel::onQueryChange,
+        onClearQuery = { viewModel.onQueryChange("") },
         onItemClick = onItemClick,
         onSearchByTypeClick = onSearchByTypeClick,
         onTopRatedClick = onTopRatedClick,
@@ -44,6 +49,7 @@ fun SearchContent(
     query: String,
     state: SearchUiState,
     onQueryChange: (String) -> Unit = {},
+    onClearQuery: () -> Unit = {},
     onItemClick: (String) -> Unit = {},
     onSearchByTypeClick: () -> Unit = {},
     onTopRatedClick: () -> Unit = {},
@@ -56,12 +62,39 @@ fun SearchContent(
             HorizontalLine()
             Spacer(Modifier.height(Spacing.md))
 
-            WireTextField(
-                value = query,
-                onValueChange = onQueryChange,
-                label = "имя айтема",
-                placeholder = "начните вводить"
-            )
+            // Поле ввода + отдельная кнопка сброса справа.
+            // WireTextField не трогаем — trailingIcon в нём капризный
+            // (minimumInteractiveComponentSize конфликтует с width=40.dp
+            // внутри Box). Кнопка снаружи — надёжнее.
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(modifier = Modifier.weight(1f)) {
+                    WireTextField(
+                        value = query,
+                        onValueChange = onQueryChange,
+                        label = "имя айтема",
+                        placeholder = "начните вводить"
+                    )
+                }
+                if (query.isNotEmpty()) {
+                    Spacer(Modifier.width(Spacing.sm))
+                    Box(
+                        modifier = Modifier
+                            .size(Sizes.inputHeight)
+                            .clickable(onClick = onClearQuery),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Close,
+                            contentDescription = "Сбросить поиск",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(Sizes.iconMd)
+                        )
+                    }
+                }
+            }
 
             Spacer(Modifier.height(Spacing.md))
 
@@ -126,4 +159,3 @@ private fun FilterOptionButton(text: String, onClick: () -> Unit) {
         }
     }
 }
-

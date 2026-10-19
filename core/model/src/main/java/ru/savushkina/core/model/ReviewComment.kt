@@ -9,5 +9,5 @@ data class ReviewComment(
     val text: String = "",
     val createdAtMillis: Long = 0L
 )
-/** Реакция пользователя на отзыв. */
+
 enum class Reaction { LIKE, DISLIKE }

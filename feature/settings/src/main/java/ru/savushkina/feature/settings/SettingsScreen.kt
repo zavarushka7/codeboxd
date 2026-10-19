@@ -2,22 +2,42 @@ package ru.savushkina.feature.settings
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import ru.savushkina.core.designsystem.component.*
+import ru.savushkina.core.designsystem.component.AlertBox
+import ru.savushkina.core.designsystem.component.BlinkingCursor
+import ru.savushkina.core.designsystem.component.HorizontalLine
+import ru.savushkina.core.designsystem.component.LabelText
+import ru.savushkina.core.designsystem.component.RolePicker
+import ru.savushkina.core.designsystem.component.WireAvatar
+import ru.savushkina.core.designsystem.component.WireButton
+import ru.savushkina.core.designsystem.component.WireFrame
+import ru.savushkina.core.designsystem.component.WireTextField
 import ru.savushkina.core.designsystem.pattern.TerminalScreen
 import ru.savushkina.core.designsystem.pattern.TerminalTopBar
 import ru.savushkina.core.designsystem.theme.CodeboxTheme
@@ -38,11 +58,12 @@ fun SettingsScreen(
     val error by viewModel.error.collectAsStateWithLifecycle()
     val textCaseStyle by viewModel.textCaseStyle.collectAsStateWithLifecycle()
 
-    val context = LocalContext.current
+    var confirmSignOut by remember { mutableStateOf(false) }
+
     val imagePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
-        uri?.let { viewModel.onAvatarSelected(it, context) }
+        uri?.let { viewModel.onAvatarSelected(it) }
     }
 
     SettingsContent(
@@ -56,10 +77,60 @@ fun SettingsScreen(
         onDescriptionChange = viewModel::onDescriptionChange,
         onRoleChange = viewModel::onRoleChange,
         onSave = { viewModel.save(onSuccess = onSaved) },
-        onSignOut = viewModel::signOut,
+        onSignOut = { confirmSignOut = true },
         textCaseStyle = textCaseStyle,
-        onTextCaseStyleChange = viewModel::setTextCaseStyle,
+        onTextCaseStyleChange = viewModel::setTextCaseStyle
     )
+
+    if (confirmSignOut) {
+        SignOutDialog(
+            onConfirm = {
+                confirmSignOut = false
+                viewModel.signOut()
+            },
+            onDismiss = { confirmSignOut = false }
+        )
+    }
+}
+
+@Composable
+private fun SignOutDialog(
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        WireFrame(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.background)   // ← непрозрачный фон
+                    .padding(Spacing.md)
+            ) {
+                LabelText(text = "// выйти из аккаунта?")
+                Spacer(Modifier.height(Spacing.md))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
+                ) {
+                    Box(modifier = Modifier.weight(1f)) {
+                        WireButton(
+                            text = "отмена",
+                            onClick = onDismiss,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                    Box(modifier = Modifier.weight(1f)) {
+                        WireButton(
+                            text = "выйти",
+                            onClick = onConfirm,
+                            accent = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -132,7 +203,6 @@ fun SettingsContent(
                 }
             }
         }
-
     }
 }
 
@@ -196,7 +266,6 @@ private fun SettingsForm(
 
             Spacer(Modifier.height(Spacing.xl))
 
-            // ── Выбор роли ──
             LabelText(
                 text = "// ваша роль",
                 color = MaterialTheme.colorScheme.primary,
@@ -204,20 +273,11 @@ private fun SettingsForm(
             )
             Spacer(Modifier.height(Spacing.sm))
 
-            Role.entries.forEach { role ->
-                val selected = user.role == role
-                KeyValueRow(
-                    key = if (selected) "[x]" else "[ ]",
-                    value = role.displayName,
-                    accent = selected,
-                    modifier = Modifier
-                        .clickable(
-                            enabled = !isSaving,
-                            onClick = { onRoleChange(role) }
-                        )
-                        .padding(vertical = Spacing.xs)
-                )
-            }
+            RolePicker(
+                selectedRole = user.role,
+                onRoleSelect = onRoleChange,
+                enabled = !isSaving
+            )
 
             error?.let {
                 Spacer(Modifier.height(Spacing.md))
@@ -240,43 +300,48 @@ private fun SettingsForm(
             )
             Spacer(Modifier.height(Spacing.sm))
 
-            TextCaseStyle.entries.forEach { style ->
-                val selected = textCaseStyle == style
-                // Используем свой ряд, а не KeyValueRow,
-                // чтобы значение не преобразовывалось в выбранный регистр
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable(
-                            enabled = !isSaving,
-                            onClick = { onTextCaseStyleChange(style) }
-                        )
-                        .padding(vertical = Spacing.xs),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    LabelText(
-                        text = if (selected) "[x]" else "[ ]",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = style.displayName(),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = if (selected) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onBackground
-                    )
-                }
-            }
+            TextCaseStylePicker(
+                selected = textCaseStyle,
+                onSelect = onTextCaseStyleChange,
+                enabled = !isSaving
+            )
+
             Spacer(Modifier.height(Spacing.xl))
             WireButton(text = "выйти из аккаунта", onClick = onSignOut)
         }
     }
 }
 
-private fun TextCaseStyle.displayName(): String = when (this) {
-    TextCaseStyle.NORMAL -> "обычный"
-    TextCaseStyle.CAMEL_CASE -> "camelCase"
-    TextCaseStyle.SNAKE_CASE -> "snake_case"
+@Composable
+private fun TextCaseStylePicker(
+    selected: TextCaseStyle,
+    onSelect: (TextCaseStyle) -> Unit,
+    enabled: Boolean = true
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        TextCaseStyle.entries.forEach { style ->
+            val isSelected = selected == style
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(enabled = enabled) { onSelect(style) }
+                    .padding(vertical = Spacing.xs),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                LabelText(
+                    text = if (isSelected) "[x]" else "[ ]",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = style.displayName,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = if (isSelected) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onBackground
+                )
+            }
+        }
+    }
 }
 
 @Preview(showBackground = true, backgroundColor = 0xFF000000)

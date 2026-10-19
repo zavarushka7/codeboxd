@@ -1,4 +1,4 @@
-package ru.savushkina.feature.collection
+package com.example.feature.collection
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -18,16 +18,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import ru.savushkina.core.designsystem.component.AlertBox
 import ru.savushkina.core.designsystem.component.HorizontalLine
 import ru.savushkina.core.designsystem.component.LabelText
 import ru.savushkina.core.designsystem.component.WireButton
 import ru.savushkina.core.designsystem.component.WireFrame
 import ru.savushkina.core.designsystem.pattern.TerminalScreen
 import ru.savushkina.core.designsystem.pattern.TerminalTopBar
-import ru.savushkina.core.designsystem.theme.CodeboxTheme
 import ru.savushkina.core.designsystem.theme.Spacing
 import ru.savushkina.core.model.UserCollection
 
@@ -39,14 +38,17 @@ fun CollectionsListScreen(
     viewModel: CollectionsListViewModel = hiltViewModel()
 ) {
     val collections by viewModel.collections.collectAsStateWithLifecycle()
-    val isOwn = viewModel.isOwnCollections
+    val isOwn by viewModel.isOwnCollections.collectAsStateWithLifecycle()
+    val error by viewModel.error.collectAsStateWithLifecycle()
 
     CollectionsListContent(
         collections = collections,
         isOwnCollections = isOwn,
+        error = error,
         onBack = onBack,
         onCollectionClick = onCollectionClick,
-        onCreateClick = onCreateClick
+        onCreateClick = onCreateClick,
+        onRetry = viewModel::retry
     )
 }
 
@@ -54,9 +56,11 @@ fun CollectionsListScreen(
 fun CollectionsListContent(
     collections: List<UserCollection>,
     isOwnCollections: Boolean = true,
+    error: String? = null,
     onBack: () -> Unit = {},
     onCollectionClick: (String) -> Unit = {},
-    onCreateClick: () -> Unit = {}
+    onCreateClick: () -> Unit = {},
+    onRetry: () -> Unit = {}
 ) {
     TerminalScreen {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -80,6 +84,26 @@ fun CollectionsListContent(
                     accent = true
                 )
                 Spacer(Modifier.height(Spacing.md))
+            }
+
+            if (error != null) {
+                Box(
+                    Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(Spacing.md)
+                    ) {
+                        AlertBox(text = error)
+                        WireButton(
+                            text = "повторить",
+                            onClick = onRetry,
+                            accent = true
+                        )
+                    }
+                }
+                return@TerminalScreen
             }
 
             if (collections.isEmpty()) {

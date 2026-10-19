@@ -6,5 +6,12 @@ enum class TextCaseStyle {
     /** camelCase — первое слово с маленькой, остальные с большой. */
     CAMEL_CASE,
     /** snake_case — всё с маленькой, пробелы как подчёркивания. */
-    SNAKE_CASE
+    SNAKE_CASE;
+
+    val displayName: String
+        get() = when (this) {
+            NORMAL -> "обычный"
+            CAMEL_CASE -> "camelCase"
+            SNAKE_CASE -> "snake_case"
+        }
 }

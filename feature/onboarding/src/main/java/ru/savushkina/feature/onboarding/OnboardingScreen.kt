@@ -12,15 +12,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import ru.savushkina.core.designsystem.component.*
+import ru.savushkina.core.designsystem.component.AlertBox
+import ru.savushkina.core.designsystem.component.HorizontalLine
+import ru.savushkina.core.designsystem.component.LabelText
+import ru.savushkina.core.designsystem.component.RolePicker
+import ru.savushkina.core.designsystem.component.WireButton
+import ru.savushkina.core.designsystem.component.WireTextField
 import ru.savushkina.core.designsystem.pattern.TerminalScreen
+import ru.savushkina.core.designsystem.pattern.TerminalTopBar
 import ru.savushkina.core.designsystem.theme.CodeboxTheme
 import ru.savushkina.core.designsystem.theme.Spacing
 import ru.savushkina.core.model.Role
 
 @Composable
 fun OnboardingScreen(
-    onComplete: () -> Unit,
     viewModel: OnboardingViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -28,7 +33,8 @@ fun OnboardingScreen(
         state = state,
         onNameChange = viewModel::onNameChange,
         onRoleSelect = viewModel::onRoleSelect,
-        onComplete = { viewModel.complete(onComplete) }
+        onComplete = viewModel::complete,
+        onBack = viewModel::signOut
     )
 }
 
@@ -37,63 +43,69 @@ fun OnboardingContent(
     state: OnboardingState,
     onNameChange: (String) -> Unit = {},
     onRoleSelect: (Role) -> Unit = {},
-    onComplete: () -> Unit = {}
+    onComplete: () -> Unit = {},
+    onBack: () -> Unit = {}
 ) {
     TerminalScreen {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState()),
-            contentAlignment = Alignment.Center
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = Spacing.lg),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                SectionHeader(text = "init_profile")
-                Spacer(Modifier.height(Spacing.xl))
-
-                WireTextField(
-                    value = state.name,
-                    onValueChange = onNameChange,
-                    label = "name",
-                    placeholder = "Ваше имя"
-                )
-
-                Spacer(Modifier.height(Spacing.xl))
-                LabelText(
-                    text = "// выберите свою роль",
-                    color = MaterialTheme.colorScheme.primary
-                )
-                Spacer(Modifier.height(Spacing.md))
-
-                Role.entries.forEach { role ->
-                    val selected = state.role == role
-                    KeyValueRow(
-                        key = if (selected) "[x]" else "[ ]",
-                        value = role.displayName,
-                        accent = selected,
-                        modifier = Modifier
-                            .clickable { onRoleSelect(role) }
-                            .padding(vertical = Spacing.xs)
+        Column(modifier = Modifier.fillMaxSize()) {
+            TerminalTopBar(
+                title = "// init_profile",
+                left = {
+                    LabelText(
+                        text = "< назад",
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.clickable(onClick = onBack)
                     )
                 }
+            )
+            HorizontalLine()
+            Spacer(Modifier.height(Spacing.md))
 
-                state.error?.let {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState()),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = Spacing.lg),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    WireTextField(
+                        value = state.name,
+                        onValueChange = onNameChange,
+                        label = "name",
+                        placeholder = "Ваше имя"
+                    )
+
+                    Spacer(Modifier.height(Spacing.xl))
+                    LabelText(
+                        text = "// выберите свою роль",
+                        color = MaterialTheme.colorScheme.primary
+                    )
                     Spacer(Modifier.height(Spacing.md))
-                    AlertBox(text = it)
+
+                    RolePicker(
+                        selectedRole = state.role,
+                        onRoleSelect = onRoleSelect
+                    )
+
+                    state.error?.let {
+                        Spacer(Modifier.height(Spacing.md))
+                        AlertBox(text = it)
+                    }
+
+                    Spacer(Modifier.height(Spacing.xl))
+
+                    WireButton(
+                        text = if (state.isLoading) "загрузка..." else "сохранить",
+                        onClick = onComplete,
+                        accent = true,
+                        enabled = !state.isLoading
+                    )
                 }
-
-                Spacer(Modifier.height(Spacing.xl))
-
-                WireButton(
-                    text = if (state.isLoading) "загрузка..." else "сохранить",
-                    onClick = onComplete,
-                    accent = true,
-                    enabled = !state.isLoading
-                )
             }
         }
     }

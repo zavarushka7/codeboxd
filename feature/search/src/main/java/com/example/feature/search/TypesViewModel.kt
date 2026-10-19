@@ -1,4 +1,4 @@
-package ru.savushkina.feature.search
+package com.example.feature.search
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -6,6 +6,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import ru.savushkina.core.common.runCatchingCancellable
 import ru.savushkina.core.domain.ItemRepository
 import javax.inject.Inject
 
@@ -25,7 +26,7 @@ class TypesViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            runCatching { itemRepository.getTypes() }
+            runCatchingCancellable { itemRepository.getTypes() }
                 .onSuccess { _uiState.value = TypesUiState.Success(it) }
                 .onFailure {
                     _uiState.value = TypesUiState.Error(

@@ -26,7 +26,6 @@ fun ItemRow(
                 .padding(Spacing.md),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Иконка/символ/буквы
             WireFrame(
                 modifier = Modifier.size(Sizes.iconFrame),
                 cornerBrackets = false
@@ -35,15 +34,15 @@ fun ItemRow(
                     modifier = Modifier.size(Sizes.iconFrame),
                     contentAlignment = Alignment.Center
                 ) {
+                    val symbol = item.symbol
+                    val iconKey = item.iconKey
                     when {
-                        !item.symbol.isNullOrBlank() -> Text(
-                            text = item.symbol!!,
+                        !symbol.isNullOrBlank() -> Text(
+                            text = symbol,
                             color = MaterialTheme.colorScheme.primary,
                             style = MaterialTheme.typography.titleMedium
                         )
-                        !item.iconKey.isNullOrBlank() -> IconKey(
-                            iconKey = item.iconKey!!
-                        )
+                        !iconKey.isNullOrBlank() -> IconKey(iconKey = iconKey)
                         else -> Text(
                             text = item.fallbackText,
                             color = MaterialTheme.colorScheme.primary,

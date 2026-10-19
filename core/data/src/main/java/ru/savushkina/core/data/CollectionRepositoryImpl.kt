@@ -22,13 +22,16 @@ class CollectionRepositoryImpl @Inject constructor(
         callbackFlow {
             val listener = firestore.collection(COLLECTION)
                 .whereEqualTo("userId", userId)
+                .orderBy("createdAt", com.google.firebase.firestore.Query.Direction.DESCENDING)
                 .addSnapshotListener { snapshot, error ->
                     if (error != null) {
                         close(error)
                         return@addSnapshotListener
                     }
-                    val list = snapshot?.documents?.mapNotNull { it.toCollectionOrNull() }
-                        ?: emptyList()
+                    if (isClosedForSend) return@addSnapshotListener
+                    val list = snapshot?.documents
+                        ?.mapNotNull { it.toCollectionOrNull() }
+                        .orEmpty()
                     trySend(list)
                 }
             awaitClose { listener.remove() }
@@ -43,6 +46,7 @@ class CollectionRepositoryImpl @Inject constructor(
                         close(error)
                         return@addSnapshotListener
                     }
+                    if (isClosedForSend) return@addSnapshotListener
                     trySend(doc?.takeIf { it.exists() }?.toCollectionOrNull())
                 }
             awaitClose { listener.remove() }
@@ -51,6 +55,22 @@ class CollectionRepositoryImpl @Inject constructor(
     override suspend fun createCollection(
         collection: UserCollection
     ): Result<String> = runCatchingCancellable {
+        require(collection.name.isNotBlank()) { "Имя коллекции не может быть пустым" }
+        require(collection.name.length <= UserCollection.NAME_MAX) {
+            "Имя коллекции слишком длинное (макс. ${UserCollection.NAME_MAX})"
+        }
+        if (collection.isFixedSize) {
+            require(collection.itemIds.size in UserCollection.MIN_SIZE..UserCollection.MAX_SIZE_LIMIT) {
+                "Размер массива должен быть от ${UserCollection.MIN_SIZE} до ${UserCollection.MAX_SIZE_LIMIT}"
+            }
+            require(!collection.allowedItemType.isNullOrBlank()) {
+                "Для массива нужно указать тип айтемов"
+            }
+            require(collection.maxSize == collection.itemIds.size) {
+                "maxSize массива должен совпадать с количеством itemIds"
+            }
+        }
+
         val data = mapOf(
             "userId" to collection.userId,
             "name" to collection.name,
@@ -66,19 +86,23 @@ class CollectionRepositoryImpl @Inject constructor(
 
     override suspend fun addItem(collectionId: String, itemId: String): Result<Unit> =
         runCatchingCancellable {
-            val docRef = firestore.collection(COLLECTION).document(collectionId)
+            val collectionRef = firestore.collection(COLLECTION).document(collectionId)
             firestore.runTransaction { tx ->
-                val snapshot = tx.get(docRef)
+                val snapshot = tx.get(collectionRef)
+                if (!snapshot.exists()) {
+                    throw IllegalStateException("Коллекция не найдена")
+                }
                 val isFixed = snapshot.getBoolean("isFixedSize") ?: false
                 if (isFixed) {
                     throw IllegalStateException("Массив нельзя редактировать")
                 }
-                val current = (snapshot.get("itemIds") as? List<*>)?.mapNotNull { it as? String }
-                    ?: emptyList()
+                val current = (snapshot.get("itemIds") as? List<*>)
+                    ?.mapNotNull { it as? String }
+                    .orEmpty()
                 if (current.contains(itemId)) {
                     throw IllegalStateException("Айтем уже добавлен")
                 }
-                tx.update(docRef, "itemIds", current + itemId)
+                tx.update(collectionRef, "itemIds", current + itemId)
             }.await()
             Unit
         }
@@ -88,12 +112,16 @@ class CollectionRepositoryImpl @Inject constructor(
             val docRef = firestore.collection(COLLECTION).document(collectionId)
             firestore.runTransaction { tx ->
                 val snapshot = tx.get(docRef)
+                if (!snapshot.exists()) {
+                    throw IllegalStateException("Коллекция не найдена")
+                }
                 val isFixed = snapshot.getBoolean("isFixedSize") ?: false
                 if (isFixed) {
                     throw IllegalStateException("Массив нельзя редактировать")
                 }
-                val current = (snapshot.get("itemIds") as? List<*>)?.mapNotNull { it as? String }
-                    ?: emptyList()
+                val current = (snapshot.get("itemIds") as? List<*>)
+                    ?.mapNotNull { it as? String }
+                    .orEmpty()
                 tx.update(docRef, "itemIds", current.filterNot { it == itemId })
             }.await()
             Unit
@@ -101,6 +129,10 @@ class CollectionRepositoryImpl @Inject constructor(
 
     override suspend fun rename(collectionId: String, newName: String): Result<Unit> =
         runCatchingCancellable {
+            require(newName.isNotBlank()) { "Имя не может быть пустым" }
+            require(newName.length <= UserCollection.NAME_MAX) {
+                "Имя слишком длинное (макс. ${UserCollection.NAME_MAX})"
+            }
             firestore.collection(COLLECTION)
                 .document(collectionId)
                 .update("name", newName)
@@ -122,12 +154,11 @@ class CollectionRepositoryImpl @Inject constructor(
             id = id,
             userId = getString("userId") ?: "",
             name = getString("name") ?: "",
-            itemIds = (get("itemIds") as? List<*>)?.mapNotNull { it as? String }
-                ?: emptyList(),
+            itemIds = (get("itemIds") as? List<*>)?.mapNotNull { it as? String }.orEmpty(),
             isFixedSize = getBoolean("isFixedSize") ?: false,
             maxSize = getLong("maxSize")?.toInt() ?: 0,
             allowedItemType = getString("allowedItemType"),
-            createdAt = getTimestamp("createdAt") ?: Timestamp.now()
+            createdAtMillis = getTimestamp("createdAt")?.toDate()?.time ?: 0L
         )
     }.getOrNull()
 

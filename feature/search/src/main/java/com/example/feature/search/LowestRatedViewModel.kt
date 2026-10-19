@@ -1,4 +1,4 @@
-package ru.savushkina.feature.search
+package com.example.feature.search
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -6,6 +6,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import ru.savushkina.core.common.runCatchingCancellable
 import ru.savushkina.core.domain.ItemRepository
 import ru.savushkina.core.model.Item
 import javax.inject.Inject
@@ -26,7 +27,7 @@ class LowestRatedViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            runCatching { itemRepository.getLowestRated() }
+            runCatchingCancellable { itemRepository.getLowestRated() }
                 .onSuccess { _uiState.value = LowestRatedUiState.Success(it) }
                 .onFailure {
                     _uiState.value = LowestRatedUiState.Error(

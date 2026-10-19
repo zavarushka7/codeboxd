@@ -1,10 +1,17 @@
 package ru.savushkina.codeboxd
 
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -15,27 +22,33 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.navArgument
 import com.example.feature.collection.ArrayPickerScreen
+import com.example.feature.collection.CollectionDetailScreen
 import com.example.feature.collection.CollectionPickerScreen
 import com.example.feature.collection.CollectionTypePickerScreen
+import com.example.feature.collection.CollectionsListScreen
 import com.example.feature.collection.CreateCollectionScreen
+import com.example.feature.favourite_picker.FavouritePickerScreen
+import com.example.feature.search.LowestRatedScreen
+import com.example.feature.search.SearchScreen
+import com.example.feature.search.TopRatedScreen
+import com.example.feature.search.TypeItemsScreen
+import com.example.feature.search.TypesScreen
+import ru.savushkina.core.designsystem.component.AlertBox
+import ru.savushkina.core.designsystem.component.BlinkingCursor
+import ru.savushkina.core.designsystem.component.WireButton
+import ru.savushkina.core.designsystem.pattern.BottomTab
 import ru.savushkina.core.designsystem.pattern.TerminalBottomBar
+import ru.savushkina.core.designsystem.pattern.TerminalScreen
+import ru.savushkina.core.designsystem.theme.Spacing
 import ru.savushkina.core.navigation.Routes
 import ru.savushkina.feature.auth.AuthScreen
-import ru.savushkina.feature.collection.CollectionDetailScreen
-import ru.savushkina.feature.collection.CollectionsListScreen
 import ru.savushkina.feature.details.DetailsScreen
-import ru.savushkina.feature.favourite_picker.FavouritePickerScreen
 import ru.savushkina.feature.feed.FeedScreen
 import ru.savushkina.feature.onboarding.OnboardingScreen
 import ru.savushkina.feature.profile.ProfileScreen
 import ru.savushkina.feature.profile.ProfileViewModel
 import ru.savushkina.feature.review.ReviewDetailScreen
 import ru.savushkina.feature.review.ReviewScreen
-import ru.savushkina.feature.search.LowestRatedScreen
-import ru.savushkina.feature.search.SearchScreen
-import ru.savushkina.feature.search.TopRatedScreen
-import ru.savushkina.feature.search.TypeItemsScreen
-import ru.savushkina.feature.search.TypesScreen
 import ru.savushkina.feature.settings.SettingsScreen
 
 @Composable
@@ -44,30 +57,59 @@ fun CodeboxNavHost(
     sessionViewModel: SessionViewModel = hiltViewModel()
 ) {
     val navTarget by sessionViewModel.navTarget.collectAsStateWithLifecycle()
-    val currentUserId = sessionViewModel.currentUserId
+    val currentUserId by sessionViewModel.currentUserId.collectAsStateWithLifecycle()
+    val canRetry by sessionViewModel.canRetry.collectAsStateWithLifecycle()
+    val retrying by sessionViewModel.retrying.collectAsStateWithLifecycle()
 
     val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
-        ?: Routes.FEED
+        ?: Routes.SPLASH
 
     LaunchedEffect(navTarget) {
         val target = navTarget ?: return@LaunchedEffect
-        if (target == Routes.FEED) return@LaunchedEffect
-        navController.navigateSingleTop(target)
+        val current = navController.currentDestination?.route
+
+        when (target) {
+            Routes.AUTH -> if (current != Routes.AUTH) {
+                navController.navigate(Routes.AUTH) {
+                    popUpTo(navController.graph.id) { inclusive = true }
+                    launchSingleTop = true
+                }
+            }
+            Routes.ONBOARDING -> if (current != Routes.ONBOARDING) {
+                navController.navigate(Routes.ONBOARDING) {
+                    popUpTo(navController.graph.id) { inclusive = true }
+                    launchSingleTop = true
+                }
+            }
+            Routes.FEED -> {
+                val sessionRoutes = setOf(
+                    Routes.SPLASH, Routes.AUTH, Routes.ONBOARDING, Routes.FEED
+                )
+                if (current in sessionRoutes && current != Routes.FEED) {
+                    navController.navigate(Routes.FEED) {
+                        popUpTo(navController.graph.id) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                }
+            }
+        }
     }
 
-    val bottomBarRoutes = setOf(
-        Routes.FEED,
-        Routes.SEARCH,
-        Routes.PROFILE,
-        Routes.DETAILS
-    )
+    val bottomBarRoutes = setOf(Routes.FEED, Routes.SEARCH, Routes.PROFILE)
     val showBottomBar = currentRoute in bottomBarRoutes
+    val selectedTab = when (currentRoute) {
+        Routes.FEED -> BottomTab.FEED
+        Routes.SEARCH -> BottomTab.SEARCH
+        Routes.PROFILE -> BottomTab.PROFILE
+        else -> null
+    }
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0),
         bottomBar = {
             if (showBottomBar) {
                 TerminalBottomBar(
-                    currentRoute = currentRoute.orEmpty(),
+                    selectedTab = selectedTab,
                     onFeedClick = { navController.navigateSingleTop(Routes.FEED) },
                     onSearchClick = { navController.navigateSingleTop(Routes.SEARCH) },
                     onProfileClick = { navController.navigateSingleTop(Routes.PROFILE) }
@@ -77,34 +119,38 @@ fun CodeboxNavHost(
     ) { padding ->
         NavHost(
             navController = navController,
-            startDestination = Routes.FEED,
+            startDestination = Routes.SPLASH,
             modifier = Modifier.padding(padding)
         ) {
-            composable(Routes.AUTH) {
-                AuthScreen(
-                    onAuthSuccess = {
-                        navController.navigate(Routes.FEED) {
-                            popUpTo(Routes.AUTH) { inclusive = true }
+            composable(Routes.SPLASH) {
+                TerminalScreen {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        if (canRetry) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(Spacing.md)
+                            ) {
+                                AlertBox(text = "Не удалось загрузить профиль")
+                                WireButton(
+                                    text = if (retrying) "загрузка..." else "повторить",
+                                    onClick = sessionViewModel::retry,
+                                    accent = true,
+                                    enabled = !retrying
+                                )
+                            }
+                        } else {
+                            BlinkingCursor()
                         }
                     }
-                )
+                }
             }
 
-            composable(Routes.ONBOARDING) {
-                OnboardingScreen(
-                    onComplete = {
-                        navController.navigate(Routes.FEED) {
-                            popUpTo(Routes.ONBOARDING) { inclusive = true }
-                        }
-                    }
-                )
-            }
+            composable(Routes.AUTH) { AuthScreen() }
+            composable(Routes.ONBOARDING) { OnboardingScreen() }
 
             composable(Routes.FEED) {
                 FeedScreen(
-                    onItemClick = { itemId ->
-                        navController.navigate(Routes.details(itemId))
-                    }
+                    onItemClick = { itemId -> navController.navigate(Routes.details(itemId)) }
                 )
             }
 
@@ -121,7 +167,8 @@ fun CodeboxNavHost(
                     },
                     onAuthorClick = { userId ->
                         navController.openUserProfile(userId, currentUserId)
-                    }
+                    },
+                    currentUserId = currentUserId
                 )
             }
 
@@ -143,15 +190,14 @@ fun CodeboxNavHost(
                     onBack = { navController.popBackStack() },
                     onAuthorClick = { userId ->
                         navController.openUserProfile(userId, currentUserId)
-                    }
+                    },
+                    currentUserId = currentUserId
                 )
             }
 
             composable(Routes.SEARCH) {
                 SearchScreen(
-                    onItemClick = { itemId ->
-                        navController.navigate(Routes.details(itemId))
-                    },
+                    onItemClick = { itemId -> navController.navigate(Routes.details(itemId)) },
                     onSearchByTypeClick = { navController.navigate(Routes.TYPES) },
                     onTopRatedClick = { navController.navigate(Routes.TOP_RATED) },
                     onLowestRatedClick = { navController.navigate(Routes.LOWEST_RATED) }
@@ -161,9 +207,7 @@ fun CodeboxNavHost(
             composable(Routes.TYPES) {
                 TypesScreen(
                     onBack = { navController.popBackStack() },
-                    onTypeClick = { type ->
-                        navController.navigate(Routes.typeItems(type))
-                    }
+                    onTypeClick = { type -> navController.navigate(Routes.typeItems(type)) }
                 )
             }
 
@@ -173,42 +217,37 @@ fun CodeboxNavHost(
             ) {
                 TypeItemsScreen(
                     onBack = { navController.popBackStack() },
-                    onItemClick = { itemId ->
-                        navController.navigate(Routes.details(itemId))
-                    }
+                    onItemClick = { itemId -> navController.navigate(Routes.details(itemId)) }
                 )
             }
 
             composable(Routes.TOP_RATED) {
                 TopRatedScreen(
                     onBack = { navController.popBackStack() },
-                    onItemClick = { itemId ->
-                        navController.navigate(Routes.details(itemId))
-                    }
+                    onItemClick = { itemId -> navController.navigate(Routes.details(itemId)) }
                 )
             }
 
             composable(Routes.LOWEST_RATED) {
                 LowestRatedScreen(
                     onBack = { navController.popBackStack() },
-                    onItemClick = { itemId ->
-                        navController.navigate(Routes.details(itemId))
-                    }
+                    onItemClick = { itemId -> navController.navigate(Routes.details(itemId)) }
                 )
             }
 
             composable(Routes.PROFILE) { backStackEntry ->
                 val profileViewModel: ProfileViewModel = hiltViewModel()
-
-                LaunchedEffect(Unit) {
+                val selectedItemFlow = remember(backStackEntry) {
                     backStackEntry.savedStateHandle
                         .getStateFlow<String?>("selected_item", null)
-                        .collect { itemId ->
-                            if (itemId != null) {
-                                profileViewModel.addFavourite(itemId)
-                                backStackEntry.savedStateHandle["selected_item"] = null
-                            }
+                }
+                LaunchedEffect(selectedItemFlow, profileViewModel) {
+                    selectedItemFlow.collect { itemId ->
+                        if (itemId != null) {
+                            profileViewModel.addFavourite(itemId)
+                            backStackEntry.savedStateHandle["selected_item"] = null
                         }
+                    }
                 }
 
                 ProfileScreen(
@@ -217,9 +256,7 @@ fun CodeboxNavHost(
                     onReviewClick = { reviewId ->
                         navController.navigate(Routes.reviewDetail(reviewId))
                     },
-                    onAddFavouriteClick = {
-                        navController.navigate(Routes.FAVOURITE_PICKER)
-                    },
+                    onAddFavouriteClick = { navController.navigate(Routes.FAVOURITE_PICKER) },
                     onCollectionsClick = { userId ->
                         navController.navigate(Routes.collections(userId))
                     },
@@ -262,7 +299,8 @@ fun CodeboxNavHost(
                     onBack = { navController.popBackStack() },
                     onSaved = {
                         navController.navigate(Routes.PROFILE) {
-                            popUpTo(Routes.SETTINGS) { inclusive = true }
+                            popUpTo(Routes.PROFILE) { inclusive = true }
+                            launchSingleTop = true
                         }
                     }
                 )
@@ -283,9 +321,7 @@ fun CodeboxNavHost(
                     onCollectionClick = { id ->
                         navController.navigate(Routes.collectionDetail(id))
                     },
-                    onCreateClick = {
-                        navController.navigate(Routes.COLLECTION_CREATE)
-                    }
+                    onCreateClick = { navController.navigate(Routes.COLLECTION_CREATE) }
                 )
             }
 
@@ -366,17 +402,17 @@ fun CodeboxNavHost(
 }
 
 private fun NavHostController.navigateSingleTop(route: String) {
-    val current = currentBackStackEntry?.destination?.route
-    if (current == route) return
+    if (currentDestination?.route == route) return
     navigate(route) {
-        popUpTo(graph.id) { inclusive = true }
+        popUpTo(graph.id) { saveState = true }
         launchSingleTop = true
+        restoreState = true
     }
 }
 
 private fun NavHostController.openUserProfile(userId: String, currentUserId: String?) {
     if (userId == currentUserId) {
-        navigate(Routes.PROFILE) { launchSingleTop = true }
+        navigateSingleTop(Routes.PROFILE)
     } else {
         navigate(Routes.userProfile(userId))
     }

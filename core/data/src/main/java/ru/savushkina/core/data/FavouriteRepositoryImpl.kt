@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
 import ru.savushkina.core.common.runCatchingCancellable
 import ru.savushkina.core.domain.FavouriteRepository
+import ru.savushkina.core.model.AddFavouriteResult
 import ru.savushkina.core.model.FavouriteFour
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -31,48 +32,49 @@ class FavouriteRepositoryImpl @Inject constructor(
         awaitClose { listener.remove() }
     }
 
-    override suspend fun setFavourites(
-        userId: String,
-        itemIds: List<String>
-    ): Result<Unit> = runCatchingCancellable {
-        val trimmed = itemIds.distinct().take(FavouriteFour.MAX_SIZE)
-        firestore.collection(COLLECTION)
-            .document(userId)
-            .set(mapOf("itemIds" to trimmed), SetOptions.merge())
-            .await()
-    }
-
     override suspend fun addFavourite(
         userId: String,
         itemId: String
-    ): Result<Unit> = runCatchingCancellable {
-        val doc = firestore.collection(COLLECTION).document(userId).get().await()
-        val current = (doc.get("itemIds") as? List<*>)?.mapNotNull { it as? String }
-            ?: emptyList()
+    ): Result<AddFavouriteResult> = runCatchingCancellable {
+        val docRef = firestore.collection(COLLECTION).document(userId)
+        firestore.runTransaction { tx ->
+            val snapshot = tx.get(docRef)
+            val current = (snapshot.get("itemIds") as? List<*>)
+                ?.mapNotNull { it as? String }
+                .orEmpty()
 
-        if (current.size >= FavouriteFour.MAX_SIZE) return@runCatchingCancellable
-        if (current.contains(itemId)) return@runCatchingCancellable
-
-        val updated = current + itemId
-        firestore.collection(COLLECTION)
-            .document(userId)
-            .set(mapOf("itemIds" to updated), SetOptions.merge())
-            .await()
+            when {
+                current.contains(itemId) -> AddFavouriteResult.AlreadyExists
+                current.size >= FavouriteFour.MAX_SIZE -> AddFavouriteResult.LimitReached
+                else -> {
+                    tx.set(
+                        docRef,
+                        mapOf("itemIds" to (current + itemId)),
+                        SetOptions.merge()
+                    )
+                    AddFavouriteResult.Added
+                }
+            }
+        }.await()
     }
 
     override suspend fun removeFavourite(
         userId: String,
         itemId: String
     ): Result<Unit> = runCatchingCancellable {
-        val doc = firestore.collection(COLLECTION).document(userId).get().await()
-        val current = (doc.get("itemIds") as? List<*>)?.mapNotNull { it as? String }
-            ?: emptyList()
-
-        val updated = current.filterNot { it == itemId }
-        firestore.collection(COLLECTION)
-            .document(userId)
-            .set(mapOf("itemIds" to updated), SetOptions.merge())
-            .await()
+        val docRef = firestore.collection(COLLECTION).document(userId)
+        firestore.runTransaction { tx ->
+            val snapshot = tx.get(docRef)
+            val current = (snapshot.get("itemIds") as? List<*>)
+                ?.mapNotNull { it as? String }
+                .orEmpty()
+            tx.set(
+                docRef,
+                mapOf("itemIds" to current.filterNot { it == itemId }),
+                SetOptions.merge()
+            )
+        }.await()
+        Unit
     }
 
     private companion object {

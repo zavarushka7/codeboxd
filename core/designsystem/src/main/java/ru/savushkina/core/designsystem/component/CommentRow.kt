@@ -7,6 +7,7 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -33,7 +34,6 @@ fun CommentRow(
                 .padding(Spacing.sm),
             verticalAlignment = Alignment.Top
         ) {
-            // Аватар — клик по автору
             Box(
                 modifier = Modifier.clickable {
                     comment.authorId?.let { onAuthorClick(it) }
@@ -63,15 +63,19 @@ fun CommentRow(
                 )
             }
             if (canDelete) {
-                Spacer(Modifier.width(Spacing.xs))
-                Icon(
-                    imageVector = Icons.Outlined.Delete,
-                    contentDescription = "Удалить комментарий",
-                    tint = MaterialTheme.colorScheme.primary,
+                Box(
                     modifier = Modifier
-                        .size(18.dp)
-                        .clickable(onClick = onDelete)
-                )
+                        .minimumInteractiveComponentSize()
+                        .clickable(onClick = onDelete),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Delete,
+                        contentDescription = "Удалить комментарий",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
         }
     }

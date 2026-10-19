@@ -17,6 +17,7 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -77,7 +78,6 @@ private fun FavouriteSlot(
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             if (item == null) {
-                // Пустой слот — плюсик
                 if (isOwnProfile) {
                     Icon(
                         imageVector = Icons.Outlined.Add,
@@ -95,7 +95,6 @@ private fun FavouriteSlot(
                     )
                 }
             } else {
-                // Заполненный слот — символ/иконка + название
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -103,7 +102,6 @@ private fun FavouriteSlot(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    // Верх: символ/иконка/первые буквы
                     Box(
                         modifier = Modifier.size(28.dp),
                         contentAlignment = Alignment.Center
@@ -141,18 +139,21 @@ private fun FavouriteSlot(
                     )
                 }
 
-                // Крестик для удаления (только в своём профиле)
                 if (isOwnProfile) {
-                    Icon(
-                        imageVector = Icons.Outlined.Close,
-                        contentDescription = "Убрать из избранного",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    Box(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
-                            .size(14.dp)
-                            .padding(2.dp)
-                            .clickable(onClick = onRemove)
-                    )
+                            .minimumInteractiveComponentSize()
+                            .clickable(onClick = onRemove),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Close,
+                            contentDescription = "Убрать из избранного",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
                 }
             }
         }

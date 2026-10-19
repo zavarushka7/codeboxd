@@ -1,5 +1,6 @@
-package ru.savushkina.feature.collection
+package com.example.feature.collection
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -49,8 +50,8 @@ fun CollectionDetailScreen(
     viewModel: CollectionDetailViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val isOwn by viewModel.isOwnCollection.collectAsStateWithLifecycle()
     var confirmDelete by remember { mutableStateOf(false) }
-    val isOwn = viewModel.isOwnCollection
 
     CollectionDetailContent(
         state = state,
@@ -222,6 +223,7 @@ private fun DeleteCollectionDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.background)
                     .padding(Spacing.md)
             ) {
                 LabelText(text = "// удалить коллекцию?")

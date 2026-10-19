@@ -10,19 +10,19 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavBackStackEntry
+import kotlinx.coroutines.flow.collectLatest
 import ru.savushkina.core.designsystem.component.AlertBox
 import ru.savushkina.core.designsystem.component.HorizontalLine
 import ru.savushkina.core.designsystem.component.KeyValueRow
@@ -34,8 +34,6 @@ import ru.savushkina.core.designsystem.pattern.TerminalScreen
 import ru.savushkina.core.designsystem.pattern.TerminalTopBar
 import ru.savushkina.core.designsystem.theme.Spacing
 import ru.savushkina.core.model.CollectionKind
-import ru.savushkina.core.model.UserCollection
-import kotlin.compareTo
 
 @Composable
 fun CreateCollectionScreen(
@@ -48,15 +46,18 @@ fun CreateCollectionScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
-    LaunchedEffect(Unit) {
+    val selectedTypeFlow = remember(backStackEntry) {
         backStackEntry.savedStateHandle
             .getStateFlow<String?>("selected_type", null)
-            .collect { type ->
-                if (type != null) {
-                    viewModel.onAllowedTypeChange(type)
-                    backStackEntry.savedStateHandle["selected_type"] = null
-                }
+    }
+
+    LaunchedEffect(selectedTypeFlow) {
+        selectedTypeFlow.collectLatest { type ->
+            if (type != null) {
+                viewModel.onAllowedTypeChange(type)
+                backStackEntry.savedStateHandle["selected_type"] = null
             }
+        }
     }
 
     CreateCollectionContent(
@@ -76,6 +77,7 @@ fun CreateCollectionScreen(
         }
     )
 }
+
 @Composable
 fun CreateCollectionContent(
     state: CreateCollectionState,
@@ -203,4 +205,3 @@ private fun ChoiceRow(
             .padding(vertical = Spacing.xs)
     )
 }
-

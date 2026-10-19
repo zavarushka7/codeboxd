@@ -4,15 +4,15 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
@@ -58,13 +58,17 @@ fun ProfileScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val reviews by viewModel.reviews.collectAsStateWithLifecycle()
     val favourites by viewModel.favourites.collectAsStateWithLifecycle()
+    val isOwnProfile by viewModel.isOwnProfile.collectAsStateWithLifecycle()
+    val currentUserId by viewModel.currentUserId.collectAsStateWithLifecycle()
+    val error by viewModel.error.collectAsStateWithLifecycle()
 
     ProfileContent(
         state = state,
         reviews = reviews,
         favourites = favourites,
-        isOwnProfile = viewModel.isOwnProfile,
-        currentUserId = viewModel.currentUserId,
+        isOwnProfile = isOwnProfile,
+        currentUserId = currentUserId,
+        error = error,
         onBack = onBack,
         onSettingsClick = onSettingsClick,
         onReviewClick = onReviewClick,
@@ -72,7 +76,7 @@ fun ProfileScreen(
         onRemoveFavourite = viewModel::removeFavourite,
         onCollectionsClick = {
             val uid = (state as? ProfileUiState.Success)?.user?.uid
-            onCollectionsClick(if (viewModel.isOwnProfile) null else uid)
+            onCollectionsClick(if (isOwnProfile) null else uid)
         }
     )
 }
@@ -84,6 +88,7 @@ fun ProfileContent(
     favourites: List<Item> = emptyList(),
     isOwnProfile: Boolean = true,
     currentUserId: String? = null,
+    error: String? = null,
     onBack: () -> Unit = {},
     onSettingsClick: () -> Unit = {},
     onReviewClick: (reviewId: String) -> Unit = {},
@@ -119,6 +124,11 @@ fun ProfileContent(
             )
             HorizontalLine()
             Spacer(Modifier.height(Spacing.lg))
+
+            if (error != null) {
+                AlertBox(text = error)
+                Spacer(Modifier.height(Spacing.md))
+            }
 
             when (state) {
                 is ProfileUiState.Loading -> {
@@ -161,90 +171,86 @@ private fun ProfileBody(
     onRemoveFavourite: (String) -> Unit,
     onCollectionsClick: () -> Unit
 ) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState()),
-        contentAlignment = Alignment.TopCenter
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(bottom = Spacing.xxl),
+        verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = Spacing.lg),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            WireAvatar(
-                avatarBase64 = user.avatarBase64,
-                fallbackText = user.initials,
-                size = 120.dp
-            )
-
-            Spacer(Modifier.height(Spacing.lg))
-
-            Text(
-                text = user.displayName,
-                style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.primary,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            user.role?.let { role ->
-                if (role != Role.DO_NOT_SPECIFY) {
-                    Spacer(Modifier.height(Spacing.md))
-                    KeyValueRow(key = "role", value = role.displayName, accent = true)
+        item(key = "header") {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = Spacing.lg),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                WireAvatar(
+                    avatarBase64 = user.avatarBase64,
+                    fallbackText = user.initials,
+                    size = 120.dp
+                )
+                Spacer(Modifier.height(Spacing.lg))
+                Text(
+                    text = user.displayName,
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                user.role?.let { role ->
+                    if (role != Role.DO_NOT_SPECIFY) {
+                        Spacer(Modifier.height(Spacing.md))
+                        KeyValueRow(key = "role", value = role.displayName, accent = true)
+                    }
                 }
-            }
-
-            if (user.description.isNotBlank()) {
-                Spacer(Modifier.height(Spacing.md))
-                WireFrame(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(Spacing.md)) {
-                        LabelText(text = "about")
-                        Spacer(Modifier.height(Spacing.xs))
-                        Text(
-                            text = user.description,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onBackground
-                        )
+                if (user.description.isNotBlank()) {
+                    Spacer(Modifier.height(Spacing.md))
+                    WireFrame(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(Spacing.md)) {
+                            LabelText(text = "about")
+                            Spacer(Modifier.height(Spacing.xs))
+                            Text(
+                                text = user.description,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onBackground
+                            )
+                        }
                     }
                 }
             }
+        }
 
+        item(key = "favourites") {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                FavouriteFourSection(
+                    favourites = favourites,
+                    isOwnProfile = isOwnProfile,
+                    onSlotClick = onAddFavouriteClick,
+                    onRemoveFavourite = onRemoveFavourite
+                )
+                Spacer(Modifier.height(Spacing.md))
+                WireButton(text = "коллекции", onClick = onCollectionsClick)
+            }
+        }
+
+        item(key = "reviews_header") {
             Spacer(Modifier.height(Spacing.xl))
-
-            FavouriteFourSection(
-                favourites = favourites,
-                isOwnProfile = isOwnProfile,
-                onSlotClick = onAddFavouriteClick,
-                onRemoveFavourite = onRemoveFavourite
-            )
-
-            Spacer(Modifier.height(Spacing.md))
-
-            WireButton(
-                text = "коллекции",
-                onClick = onCollectionsClick
-            )
-
-            Spacer(Modifier.height(Spacing.xl))
-
             SectionHeader(text = if (isOwnProfile) "мои отзывы" else "отзывы")
-            Spacer(Modifier.height(Spacing.md))
+        }
 
-            if (reviews.isEmpty()) {
+        if (reviews.isEmpty()) {
+            item(key = "reviews_empty") {
                 LabelText(text = "// пока нет отзывов")
-            } else {
-                reviews.forEach { review ->
-                    val isMine = currentUserId != null && review.userId == currentUserId
-                    ReviewRow(
-                        review = review,
-                        isMine = isMine,
-                        onCardClick = { onReviewClick(review.reviewId) },
-                        onCommentsClick = { onReviewClick(review.reviewId) }
-                    )
-                    Spacer(Modifier.height(Spacing.sm))
-                }
+            }
+        } else {
+            items(reviews, key = { it.reviewId }) { review ->
+                val isMine = currentUserId != null && review.userId == currentUserId
+                ReviewRow(
+                    review = review,
+                    isMine = isMine,
+                    onCardClick = { onReviewClick(review.reviewId) },
+                    onCommentsClick = { onReviewClick(review.reviewId) }
+                )
             }
         }
     }
