@@ -10,14 +10,17 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import ru.savushkina.core.common.runCatchingCancellable
 import ru.savushkina.core.domain.FavouriteRepository
+import ru.savushkina.core.domain.FollowRepository
 import ru.savushkina.core.domain.ItemRepository
 import ru.savushkina.core.domain.ReviewRepository
 import ru.savushkina.core.domain.SessionRepository
@@ -36,6 +39,11 @@ sealed interface ProfileUiState {
     data class Error(val message: String) : ProfileUiState
 }
 
+private data class FollowCounts(
+    val followers: Int = 0,
+    val following: Int = 0
+)
+
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class ProfileViewModel @Inject constructor(
@@ -44,7 +52,8 @@ class ProfileViewModel @Inject constructor(
     private val reviewRepository: ReviewRepository,
     private val userRepository: UserRepository,
     private val itemRepository: ItemRepository,
-    private val favouriteRepository: FavouriteRepository
+    private val favouriteRepository: FavouriteRepository,
+    private val followRepository: FollowRepository
 ) : ViewModel() {
 
     private val targetUserId: String? = Routes.decode(savedStateHandle.get<String>("userId"))
@@ -77,9 +86,60 @@ class ProfileViewModel @Inject constructor(
     private val _error = MutableStateFlow<String?>(null)
     val error = _error.asStateFlow()
 
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing = _isRefreshing.asStateFlow()
+
+    private val _refreshTrigger = MutableStateFlow(0)
+
+    // ── Подписки ──
+
+    private val _followersCount = MutableStateFlow(0)
+    val followersCount = _followersCount.asStateFlow()
+
+    private val _followingCount = MutableStateFlow(0)
+    val followingCount = _followingCount.asStateFlow()
+
+    /** true, если текущий пользователь подписан на target (в чужом профиле). */
+    val isFollowing: StateFlow<Boolean> = combine(
+        currentUserId,
+        _refreshTrigger
+    ) { uid, _ -> uid }
+        .flatMapLatest { uid ->
+            val target = targetUserId
+            if (uid == null || target == null || uid == target) {
+                flowOf(false)
+            } else {
+                followRepository.observeIsFollowing(uid, target)
+                    .catch { emit(false) }
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    private val _followActionLoading = MutableStateFlow(false)
+    val followActionLoading = _followActionLoading.asStateFlow()
+
     init {
         observeProfile()
         observeReviewsAndFavourites()
+        observeFollowCounts()
+    }
+
+    fun refresh() {
+        if (_isRefreshing.value) return
+        viewModelScope.launch {
+            _isRefreshing.value = true
+            try {
+                if (targetUserId != null) {
+                    val user = runCatching { userRepository.getUser(targetUserId) }.getOrNull()
+                    if (user != null) {
+                        _uiState.value = ProfileUiState.Success(user)
+                    }
+                }
+                _refreshTrigger.value++
+            } finally {
+                _isRefreshing.value = false
+            }
+        }
     }
 
     private fun observeProfile() {
@@ -108,10 +168,11 @@ class ProfileViewModel @Inject constructor(
 
     private fun observeReviewsAndFavourites() {
         viewModelScope.launch {
-            currentUserId
+            _refreshTrigger
+                .flatMapLatest { currentUserId }
                 .flatMapLatest { uid ->
                     if (uid == null) {
-                        kotlinx.coroutines.flow.flowOf(emptyList<Review>())
+                        flowOf(emptyList<Review>())
                     } else {
                         val profileUid = targetUserId ?: uid
                         reviewRepository.observeReviewsForUser(profileUid)
@@ -124,10 +185,11 @@ class ProfileViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
-            currentUserId
+            _refreshTrigger
+                .flatMapLatest { currentUserId }
                 .flatMapLatest { uid ->
                     if (uid == null) {
-                        kotlinx.coroutines.flow.flowOf(emptyList<Item>())
+                        flowOf(emptyList<Item>())
                     } else {
                         val profileUid = targetUserId ?: uid
                         favouriteRepository.observeFavourites(profileUid)
@@ -140,23 +202,101 @@ class ProfileViewModel @Inject constructor(
     }
 
     /**
-     * Подменяет денормализованные authorName / authorAvatarBase64
-     * актуальными значениями из users/{authorId}.
+     * Счётчики подписок.
      *
-     * Один проход по уникальным authorId: каждый автор запрашивается
-     * ровно один раз за вызов. Для 5–20 отзывов — 1–5 запросов.
+     * ВАЖНО:
+     * - в своём профиле (targetUserId == null) — обновляются в реальном времени
+     *   через observeFollowers/observeFollowing (Flow);
+     * - в чужом профиле — один раз через getFollowCounts (count() не слушает).
      */
+    private fun observeFollowCounts() {
+        viewModelScope.launch {
+            _refreshTrigger
+                .flatMapLatest { currentUserId }
+                .flatMapLatest<String?, FollowCounts> { uid ->
+                    val profileUid = targetUserId ?: uid
+                    when {
+                        profileUid == null -> flowOf(FollowCounts())
+                        targetUserId == null -> {
+                            // Свой профиль — live-подписка на оба счётчика.
+                            combine(
+                                followRepository.observeFollowers(profileUid)
+                                    .map { it.size }
+                                    .catch { emit(0) },
+                                followRepository.observeFollowing(profileUid)
+                                    .map { it.size }
+                                    .catch { emit(0) }
+                            ) { followers, following ->
+                                FollowCounts(followers, following)
+                            }
+                        }
+                        else -> {
+                            // Чужой профиль — один раз, без live-подписки.
+                            val result: Result<Pair<Int, Int>> = runCatching {
+                                followRepository.getFollowCounts(profileUid)
+                            }.getOrElse { Result.failure(it) }
+
+                            val pair: Pair<Int, Int>? = result.getOrNull()
+                            val counts = if (pair != null) {
+                                FollowCounts(pair.first, pair.second)
+                            } else {
+                                FollowCounts()
+                            }
+                            flowOf(counts)
+                        }
+                    }
+                }
+                .collect { counts ->
+                    _followersCount.value = counts.followers
+                    _followingCount.value = counts.following
+                }
+        }
+    }
+
+    fun toggleFollow() {
+        val target = targetUserId ?: return
+        val uid = currentUserId.value ?: run {
+            _error.value = "Не авторизован"
+            return
+        }
+        if (uid == target) return
+        if (_followActionLoading.value) return
+
+        viewModelScope.launch {
+            _followActionLoading.value = true
+            try {
+                if (isFollowing.value) {
+                    followRepository.unfollow(uid, target).onFailure {
+                        _error.value = it.message ?: "Не удалось отписаться"
+                    }
+                } else {
+                    followRepository.follow(uid, target).onFailure {
+                        _error.value = it.message ?: "Не удалось подписаться"
+                    }
+                }
+                // Обновляем счётчики после действия.
+                followRepository.getFollowCounts(target).onSuccess { counts ->
+                    _followersCount.value = counts.first
+                    _followingCount.value = counts.second
+                }
+            } finally {
+                _followActionLoading.value = false
+            }
+        }
+    }
+
     private suspend fun enrichReviewsWithProfiles(reviews: List<Review>): List<Review> {
         if (reviews.isEmpty()) return reviews
-        val authorIds = reviews.map { it.userId }.distinct()
-        val profiles = mutableMapOf<String, User>()
-        for (uid in authorIds) {
-            if (uid.isBlank()) continue
-            val user = runCatching { userRepository.getUser(uid) }.getOrNull() ?: continue
-            profiles[uid] = user
-        }
+        val authorIds = reviews.map { it.userId }.filter { it.isNotBlank() }.distinct()
+        if (authorIds.isEmpty()) return reviews
+
+        val users = runCatching { userRepository.getUsersByIds(authorIds) }
+            .getOrDefault(emptyList())
+        if (users.isEmpty()) return reviews
+
+        val byId = users.associateBy { it.uid }
         return reviews.map { review ->
-            val user = profiles[review.userId]
+            val user = byId[review.userId]
             if (user == null) review
             else review.copy(
                 authorName = user.displayName,

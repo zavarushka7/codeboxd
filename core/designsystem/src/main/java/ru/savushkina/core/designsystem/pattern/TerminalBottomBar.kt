@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Search
@@ -27,6 +28,7 @@ import ru.savushkina.core.designsystem.theme.Sizes
 enum class BottomTab(val route: String) {
     FEED("feed"),
     SEARCH("search"),
+    ACTIVITY("activity"),
     PROFILE("profile")
 }
 
@@ -35,6 +37,7 @@ fun TerminalBottomBar(
     selectedTab: BottomTab?,
     onFeedClick: () -> Unit,
     onSearchClick: () -> Unit,
+    onActivityClick: () -> Unit,
     onProfileClick: () -> Unit
 ) {
     Column(modifier = Modifier.systemBarsPadding()) {
@@ -51,6 +54,8 @@ fun TerminalBottomBar(
                 selectedTab == BottomTab.FEED, onFeedClick)
             BottomBarItem(Icons.Outlined.Search, "search",
                 selectedTab == BottomTab.SEARCH, onSearchClick)
+            BottomBarItem(Icons.Outlined.FavoriteBorder, "activity",
+                selectedTab == BottomTab.ACTIVITY, onActivityClick)
             BottomBarItem(Icons.Outlined.Person, "profile",
                 selectedTab == BottomTab.PROFILE, onProfileClick)
         }

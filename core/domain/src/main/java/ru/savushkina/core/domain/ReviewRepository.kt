@@ -7,7 +7,17 @@ import ru.savushkina.core.model.ReviewComment
 
 interface ReviewRepository {
     fun observeReviewsForUser(userId: String): Flow<List<Review>>
-    fun observeReviewsForItem(itemId: String): Flow<List<Review>>
+
+    fun observeReviewsForItem(
+        itemId: String,
+        limit: Long = DEFAULT_REVIEWS_PAGE_SIZE
+    ): Flow<List<Review>>
+
+    suspend fun loadMoreReviews(
+        itemId: String,
+        lastDocId: String,
+        limit: Long = DEFAULT_REVIEWS_PAGE_SIZE
+    ): Result<Page<Review>>
 
     suspend fun getReview(userId: String, itemId: String): Review?
     suspend fun saveReview(review: Review): Result<Unit>
@@ -27,13 +37,21 @@ interface ReviewRepository {
     suspend fun addComment(comment: ReviewComment): Result<Unit>
     suspend fun deleteComment(reviewId: String, commentId: String): Result<Unit>
 
-    /**
-     * Реакции текущего пользователя на набор отзывов.
-     * Один listener на всю коллекцию `reactions`, фильтр — `userId == uid`
-     * + `reviewId in chunk(30)` (Firestore ограничивает whereIn 30 значениями).
-     */
     fun observeMyReactionsForReviews(
         reviewIds: List<String>,
         userId: String
     ): Flow<Map<String, Reaction?>>
+
+    /** Live-поток реакций на отзыв (для экрана «кто лайкнул/дизлайкнул»). */
+    fun observeReactionsForReview(reviewId: String): Flow<List<ReactionEntry>>
+
+    data class ReactionEntry(
+        val userId: String,
+        val reaction: Reaction,
+        val createdAtMillis: Long
+    )
+
+    companion object {
+        const val DEFAULT_REVIEWS_PAGE_SIZE = 20L
+    }
 }

@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.FloatingActionButton
@@ -24,6 +26,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -59,6 +62,7 @@ import ru.savushkina.core.model.ReviewComment
 fun ReviewDetailScreen(
     onBack: () -> Unit,
     onAuthorClick: (userId: String) -> Unit,
+    onReactionsClick: () -> Unit,
     currentUserId: String?,
     viewModel: ReviewDetailViewModel = hiltViewModel()
 ) {
@@ -81,8 +85,10 @@ fun ReviewDetailScreen(
         isLoadingMoreComments = isLoadingMore,
         currentUserId = currentUserId,
         error = error,
+        highlightCommentId = viewModel.initialCommentId,
         onBack = onBack,
         onAuthorClick = onAuthorClick,
+        onReactionsClick = onReactionsClick,
         onCommentDraftChange = viewModel::onCommentDraftChange,
         onSubmitComment = { onDone -> viewModel.submitComment(onDone) },
         onDeleteComment = viewModel::deleteComment,
@@ -101,15 +107,33 @@ fun ReviewDetailContent(
     isLoadingMoreComments: Boolean = false,
     currentUserId: String? = null,
     error: String? = null,
+    highlightCommentId: String? = null,
     onBack: () -> Unit = {},
     onAuthorClick: (String) -> Unit = {},
+    onReactionsClick: () -> Unit = {},
     onCommentDraftChange: (String) -> Unit = {},
     onSubmitComment: (onDone: () -> Unit) -> Unit = { it() },
     onDeleteComment: (String) -> Unit = {},
     onLoadMoreComments: () -> Unit = {}
 ) {
-    // rememberSaveable — переживает поворот экрана
     var inputVisible by rememberSaveable { mutableStateOf(false) }
+    val listState = rememberLazyListState()
+
+    // Когда комментарии загрузились и есть highlightCommentId — скроллим к нему.
+    val commentIndex = remember(comments, highlightCommentId, state) {
+        if (state !is ReviewDetailUiState.Success || highlightCommentId == null) null
+        else {
+            val headerOffset = 2 // review_card + comments_header
+            val idx = comments.indexOfFirst { it.id == highlightCommentId }
+            if (idx >= 0) idx + headerOffset else null
+        }
+    }
+
+    LaunchedEffect(commentIndex) {
+        if (commentIndex != null) {
+            listState.animateScrollToItem(commentIndex)
+        }
+    }
 
     TerminalScreen {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -147,6 +171,7 @@ fun ReviewDetailContent(
                     val isMine = currentUserId != null && review.userId == currentUserId
 
                     LazyColumn(
+                        state = listState,
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(bottom = 100.dp),
                         verticalArrangement = Arrangement.spacedBy(Spacing.xs)
@@ -195,6 +220,20 @@ fun ReviewDetailContent(
                                             color = MaterialTheme.colorScheme.onBackground
                                         )
                                     }
+
+                                    Spacer(Modifier.height(Spacing.sm))
+                                    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
+                                        LabelText(
+                                            text = "👍 ${review.likes}",
+                                            color = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.clickable(onClick = onReactionsClick)
+                                        )
+                                        LabelText(
+                                            text = "👎 ${review.dislikes}",
+                                            color = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.clickable(onClick = onReactionsClick)
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -214,7 +253,7 @@ fun ReviewDetailContent(
                                     currentUserId != null && c.authorId == currentUserId
                                 CommentRow(
                                     comment = c,
-                                    isMine = isCommentMine,
+                                    isMine = isCommentMine || c.id == highlightCommentId,
                                     canDelete = isCommentMine,
                                     onDelete = { onDeleteComment(c.id) },
                                     onAuthorClick = onAuthorClick
@@ -290,7 +329,7 @@ private fun CommentInputDialog(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.background)   // ← непрозрачный фон
+                        .background(MaterialTheme.colorScheme.background)
                         .padding(Spacing.md)
                 ) {
                     LabelText(text = "// новый комментарий")

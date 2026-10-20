@@ -1,16 +1,11 @@
 package ru.savushkina.feature.settings
 
-import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.net.Uri
-import android.util.Base64
-import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -19,8 +14,9 @@ import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import ru.savushkina.core.domain.AuthRepository
+import ru.savushkina.core.domain.AvatarEncodeResult
+import ru.savushkina.core.domain.AvatarEncoder
 import ru.savushkina.core.domain.SessionRepository
 import ru.savushkina.core.domain.SettingsRepository
 import ru.savushkina.core.domain.UserRepository
@@ -28,7 +24,6 @@ import ru.savushkina.core.model.Role
 import ru.savushkina.core.model.TextCaseStyle
 import ru.savushkina.core.model.User
 import ru.savushkina.core.model.UserConstraints
-import java.io.ByteArrayOutputStream
 import javax.inject.Inject
 
 sealed interface SettingsUiState {
@@ -39,11 +34,11 @@ sealed interface SettingsUiState {
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
-    @ApplicationContext private val context: Context,
     private val authRepository: AuthRepository,
     private val userRepository: UserRepository,
     private val sessionRepository: SessionRepository,
-    private val settingsRepository: SettingsRepository
+    private val settingsRepository: SettingsRepository,
+    private val avatarEncoder: AvatarEncoder
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<SettingsUiState>(SettingsUiState.Loading)
@@ -57,6 +52,14 @@ class SettingsViewModel @Inject constructor(
 
     private val _error = MutableStateFlow<String?>(null)
     val error = _error.asStateFlow()
+
+    private val _isCheckingUsername = MutableStateFlow(false)
+    val isCheckingUsername = _isCheckingUsername.asStateFlow()
+
+    private val _usernameAvailable = MutableStateFlow<Boolean?>(null)
+    val usernameAvailable = _usernameAvailable.asStateFlow()
+
+    private var usernameCheckJob: Job? = null
 
     val textCaseStyle: StateFlow<TextCaseStyle> = settingsRepository.textCaseStyle
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TextCaseStyle.NORMAL)
@@ -83,6 +86,40 @@ class SettingsViewModel @Inject constructor(
         _error.value = null
     }
 
+    fun onUsernameChange(value: String) {
+        val clean = value.lowercase().removePrefix("@").filter { it.isLetterOrDigit() || it == '_' }
+        _draft.update { it?.copy(username = clean) }
+        _error.value = null
+        _usernameAvailable.value = null
+        scheduleUsernameCheck(clean)
+    }
+
+    private fun scheduleUsernameCheck(username: String) {
+        usernameCheckJob?.cancel()
+        val original = (_uiState.value as? SettingsUiState.Success)?.user?.username.orEmpty()
+        if (username == original) {
+            _usernameAvailable.value = true
+            return
+        }
+        if (username.isBlank()) return
+        if (!UserConstraints.USERNAME_REGEX.matches(username)) return
+
+        usernameCheckJob = viewModelScope.launch {
+            delay(500)
+            _isCheckingUsername.value = true
+            userRepository.isUsernameAvailable(username)
+                .onSuccess { available ->
+                    _isCheckingUsername.value = false
+                    _usernameAvailable.value = available
+                    if (!available) _error.value = "Этот username уже занят"
+                }
+                .onFailure {
+                    _isCheckingUsername.value = false
+                    _usernameAvailable.value = null
+                }
+        }
+    }
+
     fun onDescriptionChange(value: String) {
         _draft.update { it?.copy(description = value) }
         _error.value = null
@@ -99,13 +136,12 @@ class SettingsViewModel @Inject constructor(
     fun onAvatarSelected(uri: Uri) {
         viewModelScope.launch {
             _error.value = null
-            val result = withContext(Dispatchers.IO) { encodeImage(uri, context) }
-            when (result) {
-                is EncodeResult.Failure -> _error.value = result.reason
-                is EncodeResult.TooLarge -> _error.value =
+            when (val result = avatarEncoder.encode(uri)) {
+                is AvatarEncodeResult.Failure -> _error.value = result.reason
+                is AvatarEncodeResult.TooLarge -> _error.value =
                     "Изображение слишком большое (${result.base64Length / 1024} KB > " +
                             "${UserConstraints.AVATAR_MAX_BASE64_LENGTH / 1024} KB)"
-                is EncodeResult.Success -> {
+                is AvatarEncodeResult.Success -> {
                     _draft.update { it?.copy(avatarBase64 = result.base64) }
                 }
             }
@@ -130,23 +166,20 @@ class SettingsViewModel @Inject constructor(
             userRepository.saveProfile(
                 uid = authUser.uid,
                 name = currentDraft.name.trim(),
+                username = currentDraft.username.trim().ifBlank { null },
                 description = currentDraft.description.trim(),
                 avatarBase64 = currentDraft.avatarBase64,
                 role = currentDraft.role
             )
                 .onSuccess {
                     _isSaving.value = false
-                    // Сбрасываем draft — при следующем входе на экран
-                    // он снова заполнится из currentUser.
                     _draft.value = null
+                    _usernameAvailable.value = null
                     onSuccess()
                 }
                 .onFailure {
                     _isSaving.value = false
                     _error.value = it.message ?: "Не удалось сохранить"
-                    // ВАЖНО: при ошибке draft НЕ сбрасываем — пользователь
-                    // должен видеть свои правки и иметь возможность повторить.
-                    // Но при уходе с экрана draft будет сброшен в onCleared().
                 }
         }
     }
@@ -154,6 +187,7 @@ class SettingsViewModel @Inject constructor(
     override fun onCleared() {
         super.onCleared()
         _draft.value = null
+        usernameCheckJob?.cancel()
     }
 
     private fun validate(user: User): String? {
@@ -162,83 +196,15 @@ class SettingsViewModel @Inject constructor(
         if (name.length > UserConstraints.NAME_MAX) {
             return "Имя слишком длинное (максимум ${UserConstraints.NAME_MAX} символов)"
         }
+        if (user.username.isNotBlank() &&
+            !UserConstraints.USERNAME_REGEX.matches(user.username)
+        ) {
+            return "Username: 3–20 символов, a-z, 0-9, _"
+        }
+        if (_usernameAvailable.value == false) return "Этот username уже занят"
         if (user.description.length > UserConstraints.DESCRIPTION_MAX) {
             return "Описание слишком длинное (максимум ${UserConstraints.DESCRIPTION_MAX})"
         }
         return null
     }
-}
-
-// ────────────────────────────────────────────────────────────────
-// Кодирование аватара.
-// ────────────────────────────────────────────────────────────────
-
-private sealed interface EncodeResult {
-    data class Success(val base64: String) : EncodeResult
-    data class TooLarge(val base64Length: Int) : EncodeResult
-    data class Failure(val reason: String) : EncodeResult
-}
-
-private const val AVATAR_TARGET_PX = 128
-private const val JPEG_QUALITY = 70
-
-private fun encodeImage(uri: Uri, context: Context): EncodeResult {
-    val bytes: ByteArray = try {
-        context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-            ?: return EncodeResult.Failure("Не удалось прочитать изображение")
-    } catch (e: Exception) {
-        Log.e("SettingsViewModel", "encodeImage: read failed", e)
-        return EncodeResult.Failure("Не удалось прочитать изображение")
-    }
-
-    if (bytes.isEmpty()) return EncodeResult.Failure("Файл пустой")
-
-    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-
-    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
-        return EncodeResult.Failure("Формат изображения не поддерживается")
-    }
-
-    val sample = calculateInSampleSize(bounds.outWidth, bounds.outHeight, AVATAR_TARGET_PX)
-    val opts = BitmapFactory.Options().apply { inSampleSize = sample }
-    val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
-        ?: return EncodeResult.Failure("Не удалось декодировать изображение")
-
-    val scaled: Bitmap = try {
-        if (bitmap.width != AVATAR_TARGET_PX || bitmap.height != AVATAR_TARGET_PX) {
-            Bitmap.createScaledBitmap(bitmap, AVATAR_TARGET_PX, AVATAR_TARGET_PX, true)
-                .also { if (it !== bitmap) bitmap.recycle() }
-        } else {
-            bitmap
-        }
-    } catch (e: OutOfMemoryError) {
-        Log.e("SettingsViewModel", "encodeImage: OOM", e)
-        bitmap.recycle()
-        return EncodeResult.Failure("Недостаточно памяти для обработки изображения")
-    }
-
-    val stream = ByteArrayOutputStream()
-    scaled.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, stream)
-    scaled.recycle()
-
-    val base64 = Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP)
-
-    return if (base64.length > UserConstraints.AVATAR_MAX_BASE64_LENGTH) {
-        EncodeResult.TooLarge(base64.length)
-    } else {
-        EncodeResult.Success(base64)
-    }
-}
-
-private fun calculateInSampleSize(width: Int, height: Int, target: Int): Int {
-    var sample = 1
-    var w = width
-    var h = height
-    while (w / 2 >= target && h / 2 >= target) {
-        w /= 2
-        h /= 2
-        sample *= 2
-    }
-    return sample
 }

@@ -33,6 +33,7 @@ import com.example.feature.search.SearchScreen
 import com.example.feature.search.TopRatedScreen
 import com.example.feature.search.TypeItemsScreen
 import com.example.feature.search.TypesScreen
+import com.example.feature.search.UserSearchScreen
 import ru.savushkina.core.designsystem.component.AlertBox
 import ru.savushkina.core.designsystem.component.BlinkingCursor
 import ru.savushkina.core.designsystem.component.WireButton
@@ -40,14 +41,18 @@ import ru.savushkina.core.designsystem.pattern.BottomTab
 import ru.savushkina.core.designsystem.pattern.TerminalBottomBar
 import ru.savushkina.core.designsystem.pattern.TerminalScreen
 import ru.savushkina.core.designsystem.theme.Spacing
+import ru.savushkina.core.navigation.FollowListMode
 import ru.savushkina.core.navigation.Routes
+import ru.savushkina.feature.activity.ActivityScreen
 import ru.savushkina.feature.auth.AuthScreen
 import ru.savushkina.feature.details.DetailsScreen
 import ru.savushkina.feature.feed.FeedScreen
 import ru.savushkina.feature.onboarding.OnboardingScreen
+import ru.savushkina.feature.profile.FollowListScreen
 import ru.savushkina.feature.profile.ProfileScreen
 import ru.savushkina.feature.profile.ProfileViewModel
 import ru.savushkina.feature.review.ReviewDetailScreen
+import ru.savushkina.feature.review.ReviewReactionsScreen
 import ru.savushkina.feature.review.ReviewScreen
 import ru.savushkina.feature.settings.SettingsScreen
 
@@ -95,11 +100,14 @@ fun CodeboxNavHost(
         }
     }
 
-    val bottomBarRoutes = setOf(Routes.FEED, Routes.SEARCH, Routes.PROFILE)
+    val bottomBarRoutes = setOf(
+        Routes.FEED, Routes.SEARCH, Routes.ACTIVITY, Routes.PROFILE
+    )
     val showBottomBar = currentRoute in bottomBarRoutes
     val selectedTab = when (currentRoute) {
         Routes.FEED -> BottomTab.FEED
         Routes.SEARCH -> BottomTab.SEARCH
+        Routes.ACTIVITY -> BottomTab.ACTIVITY
         Routes.PROFILE -> BottomTab.PROFILE
         else -> null
     }
@@ -112,6 +120,7 @@ fun CodeboxNavHost(
                     selectedTab = selectedTab,
                     onFeedClick = { navController.navigateSingleTop(Routes.FEED) },
                     onSearchClick = { navController.navigateSingleTop(Routes.SEARCH) },
+                    onActivityClick = { navController.navigateSingleTop(Routes.ACTIVITY) },
                     onProfileClick = { navController.navigateSingleTop(Routes.PROFILE) }
                 )
             }
@@ -154,6 +163,17 @@ fun CodeboxNavHost(
                 )
             }
 
+            composable(Routes.ACTIVITY) {
+                ActivityScreen(
+                    onUserClick = { userId ->
+                        navController.openUserProfile(userId, currentUserId)
+                    },
+                    onReviewClick = { reviewId, commentId ->
+                        navController.navigate(Routes.reviewDetail(reviewId, commentId))
+                    }
+                )
+            }
+
             composable(
                 route = Routes.DETAILS,
                 arguments = listOf(navArgument("itemId") { type = NavType.StringType })
@@ -184,14 +204,37 @@ fun CodeboxNavHost(
 
             composable(
                 route = Routes.REVIEW_DETAIL,
-                arguments = listOf(navArgument("reviewId") { type = NavType.StringType })
-            ) {
+                arguments = listOf(
+                    navArgument("reviewId") { type = NavType.StringType },
+                    navArgument("commentId") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    }
+                )
+            ) { entry ->
+                val reviewId = entry.arguments?.getString("reviewId").orEmpty()
                 ReviewDetailScreen(
                     onBack = { navController.popBackStack() },
                     onAuthorClick = { userId ->
                         navController.openUserProfile(userId, currentUserId)
                     },
+                    onReactionsClick = {
+                        navController.navigate(Routes.reviewReactions(reviewId))
+                    },
                     currentUserId = currentUserId
+                )
+            }
+
+            composable(
+                route = Routes.REVIEW_REACTIONS,
+                arguments = listOf(navArgument("reviewId") { type = NavType.StringType })
+            ) {
+                ReviewReactionsScreen(
+                    onBack = { navController.popBackStack() },
+                    onUserClick = { userId ->
+                        navController.openUserProfile(userId, currentUserId)
+                    }
                 )
             }
 
@@ -200,7 +243,17 @@ fun CodeboxNavHost(
                     onItemClick = { itemId -> navController.navigate(Routes.details(itemId)) },
                     onSearchByTypeClick = { navController.navigate(Routes.TYPES) },
                     onTopRatedClick = { navController.navigate(Routes.TOP_RATED) },
-                    onLowestRatedClick = { navController.navigate(Routes.LOWEST_RATED) }
+                    onLowestRatedClick = { navController.navigate(Routes.LOWEST_RATED) },
+                    onUserSearchClick = { navController.navigate(Routes.USER_SEARCH) }
+                )
+            }
+
+            composable(Routes.USER_SEARCH) {
+                UserSearchScreen(
+                    onBack = { navController.popBackStack() },
+                    onUserClick = { userId ->
+                        navController.openUserProfile(userId, currentUserId)
+                    }
                 )
             }
 
@@ -260,6 +313,12 @@ fun CodeboxNavHost(
                     onCollectionsClick = { userId ->
                         navController.navigate(Routes.collections(userId))
                     },
+                    onFollowersClick = {
+                        navController.navigate(Routes.followList(FollowListMode.FOLLOWERS, null))
+                    },
+                    onFollowingClick = {
+                        navController.navigate(Routes.followList(FollowListMode.FOLLOWING, null))
+                    },
                     viewModel = profileViewModel
                 )
             }
@@ -267,7 +326,8 @@ fun CodeboxNavHost(
             composable(
                 route = Routes.USER_PROFILE,
                 arguments = listOf(navArgument("userId") { type = NavType.StringType })
-            ) {
+            ) { entry ->
+                val targetUserId = entry.arguments?.getString("userId").orEmpty()
                 ProfileScreen(
                     onBack = { navController.popBackStack() },
                     onSettingsClick = {},
@@ -278,7 +338,36 @@ fun CodeboxNavHost(
                     onCollectionsClick = { userId ->
                         navController.navigate(Routes.collections(userId))
                     },
+                    onFollowersClick = {
+                        navController.navigate(
+                            Routes.followList(FollowListMode.FOLLOWERS, targetUserId)
+                        )
+                    },
+                    onFollowingClick = {
+                        navController.navigate(
+                            Routes.followList(FollowListMode.FOLLOWING, targetUserId)
+                        )
+                    },
                     viewModel = hiltViewModel()
+                )
+            }
+
+            composable(
+                route = Routes.FOLLOW_LIST,
+                arguments = listOf(
+                    navArgument("mode") { type = NavType.StringType },
+                    navArgument("userId") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    }
+                )
+            ) {
+                FollowListScreen(
+                    onBack = { navController.popBackStack() },
+                    onUserClick = { userId ->
+                        navController.openUserProfile(userId, currentUserId)
+                    }
                 )
             }
 

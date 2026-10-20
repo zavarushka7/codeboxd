@@ -7,9 +7,10 @@ object UserConstraints {
     const val PASSWORD_MIN = 6
     const val PASSWORD_MAX = 64
 
-    /** Максимальная длина base64-строки аватара (ASCII, 1 символ = 1 байт). */
-    const val AVATAR_MAX_BASE64_LENGTH = 700_000
+    const val USERNAME_MIN = 3
+    const val USERNAME_MAX = 20
+    /** Только lowercase latin, цифры и подчёркивание. */
+    val USERNAME_REGEX = Regex("^[a-z0-9_]{$USERNAME_MIN,$USERNAME_MAX}$")
 
-    @Deprecated("Use AVATAR_MAX_BASE64_LENGTH", ReplaceWith("AVATAR_MAX_BASE64_LENGTH"))
-    const val AVATAR_MAX_BYTES = AVATAR_MAX_BASE64_LENGTH
+    const val AVATAR_MAX_BASE64_LENGTH = 700_000
 }

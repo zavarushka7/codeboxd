@@ -49,6 +49,7 @@ dependencies {
     implementation(project(":feature:review"))
     implementation(project(":feature:feed"))
 
+    implementation(project(":feature:activity"))
 
 
 

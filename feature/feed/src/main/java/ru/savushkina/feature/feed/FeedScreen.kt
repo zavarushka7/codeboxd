@@ -4,6 +4,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -20,26 +22,34 @@ import ru.savushkina.core.designsystem.theme.CodeboxTheme
 import ru.savushkina.core.designsystem.theme.Spacing
 import ru.savushkina.core.model.Item
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FeedScreen(
     onItemClick: (String) -> Unit,
     viewModel: FeedViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
+
     FeedContent(
         state = state,
+        isRefreshing = isRefreshing,
         onItemClick = onItemClick,
         onRetry = viewModel::retry,
+        onRefresh = viewModel::refresh,
         onLoadMore = viewModel::loadMore,
         onRetryLoadMore = viewModel::retryLoadMore
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FeedContent(
     state: FeedUiState,
+    isRefreshing: Boolean = false,
     onItemClick: (String) -> Unit = {},
     onRetry: () -> Unit = {},
+    onRefresh: () -> Unit = {},
     onLoadMore: () -> Unit = {},
     onRetryLoadMore: () -> Unit = {}
 ) {
@@ -52,8 +62,8 @@ fun FeedContent(
 
             when (state) {
                 is FeedUiState.Loading -> {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        BlinkingCursor()
+                    SkeletonList(count = 8) {
+                        SkeletonItemRow()
                     }
                 }
                 is FeedUiState.Error -> {
@@ -77,12 +87,18 @@ fun FeedContent(
                             LabelText(text = "// пока нет айтемов")
                         }
                     } else {
-                        FeedList(
-                            state = state,
-                            onItemClick = onItemClick,
-                            onLoadMore = onLoadMore,
-                            onRetryLoadMore = onRetryLoadMore
-                        )
+                        PullToRefreshBox(
+                            isRefreshing = isRefreshing,
+                            onRefresh = onRefresh,
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            FeedList(
+                                state = state,
+                                onItemClick = onItemClick,
+                                onLoadMore = onLoadMore,
+                                onRetryLoadMore = onRetryLoadMore
+                            )
+                        }
                     }
                 }
             }
@@ -101,21 +117,13 @@ private fun FeedList(
     val currentOnLoadMore by rememberUpdatedState(onLoadMore)
     val currentState by rememberUpdatedState(state)
 
-    // Автоподгрузка: snapshotFlow подписывается на изменения visibleItemsInfo
-    // и эмитит, когда пользователь доскроллил до конца.
-    //
-    // Раньше был LaunchedEffect с ключами (canLoadMore, isLoadingMore, loadMoreError)
-    // — он не реагировал на скролл, потому что layoutInfo не триггерит рекомпозицию.
     LaunchedEffect(listState) {
         snapshotFlow {
             val layoutInfo = listState.layoutInfo
             val lastVisible = layoutInfo.visibleItemsInfo.lastOrNull()?.index
             val total = layoutInfo.totalItemsCount
-            if (lastVisible == null || total == 0) {
-                false
-            } else {
-                lastVisible >= total - 3
-            }
+            if (lastVisible == null || total == 0) false
+            else lastVisible >= total - 3
         }
             .collect { nearEnd ->
                 if (nearEnd) {
@@ -137,17 +145,6 @@ private fun FeedList(
             ItemRow(item = item, onClick = { onItemClick(item.id) })
         }
 
-        if (state.isLoadingMore) {
-            item(key = "loading_more") {
-                Box(
-                    modifier = Modifier.fillMaxWidth().padding(Spacing.md),
-                    contentAlignment = Alignment.Center
-                ) {
-                    BlinkingCursor()
-                }
-            }
-        }
-
         state.loadMoreError?.let { error ->
             item(key = "load_more_error") {
                 Column(
@@ -161,17 +158,6 @@ private fun FeedList(
                         onClick = onRetryLoadMore,
                         accent = true
                     )
-                }
-            }
-        }
-
-        if (!state.canLoadMore && state.items.isNotEmpty() && state.loadMoreError == null) {
-            item(key = "end_of_feed") {
-                Box(
-                    modifier = Modifier.fillMaxWidth().padding(Spacing.md),
-                    contentAlignment = Alignment.Center
-                ) {
-                    LabelText(text = "// конец ленты")
                 }
             }
         }

@@ -30,7 +30,7 @@ data class ReviewFormState(
 
 @HiltViewModel
 class ReviewViewModel @Inject constructor(
-    savedStateHandle: SavedStateHandle,
+    private val savedStateHandle: SavedStateHandle,
     private val itemRepository: ItemRepository,
     private val reviewRepository: ReviewRepository,
     private val userRepository: UserRepository,
@@ -40,12 +40,21 @@ class ReviewViewModel @Inject constructor(
     private val itemId: String = Routes.decode(savedStateHandle.get<String>("itemId"))
     private var currentUserId: String? = null
 
-    private val _state = MutableStateFlow(ReviewFormState(isLoading = true))
+    private val _state = MutableStateFlow(
+        ReviewFormState(
+            isLoading = true,
+            rating = savedStateHandle.get<Int>(KEY_RATING) ?: 0,
+            comment = savedStateHandle.get<String>(KEY_COMMENT).orEmpty()
+        )
+    )
     val state = _state.asStateFlow()
 
     init {
         if (itemId.isBlank()) {
-            _state.value = ReviewFormState(error = "Некорректный ID айтема")
+            _state.value = _state.value.copy(
+                isLoading = false,
+                error = "Некорректный ID айтема"
+            )
         } else {
             load()
         }
@@ -59,14 +68,26 @@ class ReviewViewModel @Inject constructor(
                 val existing = currentUserId?.let { reviewRepository.getReview(it, itemId) }
                 item to existing
             }.onSuccess { (item, existing) ->
+                // Если в SavedStateHandle уже есть черновик (rating/comment),
+                // не перезатираем его данными из существующего отзыва.
+                val hasDraftRating = savedStateHandle.contains(KEY_RATING)
+                val hasDraftComment = savedStateHandle.contains(KEY_COMMENT)
                 _state.value = _state.value.copy(
                     item = item,
-                    rating = existing?.rating ?: 0,
-                    comment = existing?.comment ?: "",
+                    rating = if (hasDraftRating) _state.value.rating
+                    else existing?.rating ?: 0,
+                    comment = if (hasDraftComment) _state.value.comment
+                    else existing?.comment ?: "",
                     isLoading = false
                 )
+                // Если черновика не было, а отзыв существовал — сохраняем как стартовый.
+                if (!hasDraftRating && existing != null) {
+                    savedStateHandle[KEY_RATING] = existing.rating
+                }
+                if (!hasDraftComment && existing != null) {
+                    savedStateHandle[KEY_COMMENT] = existing.comment
+                }
             }.onFailure { e ->
-                // Не блокируем форму — пользователь всё ещё может поставить оценку.
                 _state.value = _state.value.copy(
                     isLoading = false,
                     error = e.message ?: "Не удалось загрузить айтем"
@@ -76,10 +97,12 @@ class ReviewViewModel @Inject constructor(
     }
 
     fun onRatingChange(newRating: Int) {
+        savedStateHandle[KEY_RATING] = newRating
         _state.value = _state.value.copy(rating = newRating, error = null)
     }
 
     fun onCommentChange(value: String) {
+        savedStateHandle[KEY_COMMENT] = value
         _state.value = _state.value.copy(comment = value, error = null)
     }
 
@@ -122,7 +145,14 @@ class ReviewViewModel @Inject constructor(
                 )
             )
                 .onSuccess {
-                    _state.value = _state.value.copy(isSaving = false)
+                    // Черновик больше не нужен — очищаем.
+                    savedStateHandle.remove<Int>(KEY_RATING)
+                    savedStateHandle.remove<String>(KEY_COMMENT)
+                    _state.value = _state.value.copy(
+                        isSaving = false,
+                        rating = 0,
+                        comment = ""
+                    )
                     onSuccess()
                 }
                 .onFailure { e ->
@@ -132,5 +162,10 @@ class ReviewViewModel @Inject constructor(
                     )
                 }
         }
+    }
+
+    private companion object {
+        const val KEY_RATING = "review_rating"
+        const val KEY_COMMENT = "review_comment"
     }
 }

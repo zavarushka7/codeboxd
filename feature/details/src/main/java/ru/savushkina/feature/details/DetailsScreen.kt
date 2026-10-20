@@ -33,6 +33,8 @@ import ru.savushkina.core.designsystem.component.LabelText
 import ru.savushkina.core.designsystem.component.RatingStars
 import ru.savushkina.core.designsystem.component.ReviewRow
 import ru.savushkina.core.designsystem.component.SectionHeader
+import ru.savushkina.core.designsystem.component.Skeleton
+import ru.savushkina.core.designsystem.component.SkeletonReviewRow
 import ru.savushkina.core.designsystem.component.WireButton
 import ru.savushkina.core.designsystem.component.WireFrame
 import ru.savushkina.core.designsystem.pattern.TerminalScreen
@@ -55,17 +57,25 @@ fun DetailsScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val myReactions by viewModel.myReactions.collectAsStateWithLifecycle()
+    val canLoadMoreReviews by viewModel.canLoadMoreReviews.collectAsStateWithLifecycle()
+    val isLoadingMoreReviews by viewModel.isLoadingMoreReviews.collectAsStateWithLifecycle()
+    val loadMoreReviewsError by viewModel.loadMoreReviewsError.collectAsStateWithLifecycle()
 
     DetailsContent(
         state = state,
         myReactions = myReactions,
         currentUserId = currentUserId,
+        canLoadMoreReviews = canLoadMoreReviews,
+        isLoadingMoreReviews = isLoadingMoreReviews,
+        loadMoreReviewsError = loadMoreReviewsError,
         onBack = onBack,
         onWriteReview = onWriteReview,
         onReviewClick = onReviewClick,
         onAuthorClick = onAuthorClick,
         onLike = viewModel::onLike,
-        onDislike = viewModel::onDislike
+        onDislike = viewModel::onDislike,
+        onLoadMoreReviews = viewModel::loadMoreReviews,
+        onRetryLoadMoreReviews = viewModel::retryLoadMoreReviews
     )
 }
 
@@ -74,12 +84,17 @@ fun DetailsContent(
     state: DetailsUiState,
     myReactions: Map<String, Reaction?> = emptyMap(),
     currentUserId: String? = null,
+    canLoadMoreReviews: Boolean = false,
+    isLoadingMoreReviews: Boolean = false,
+    loadMoreReviewsError: String? = null,
     onBack: () -> Unit = {},
     onWriteReview: () -> Unit = {},
     onReviewClick: (reviewId: String) -> Unit = {},
     onAuthorClick: (userId: String) -> Unit = {},
     onLike: (String) -> Unit = {},
-    onDislike: (String) -> Unit = {}
+    onDislike: (String) -> Unit = {},
+    onLoadMoreReviews: () -> Unit = {},
+    onRetryLoadMoreReviews: () -> Unit = {}
 ) {
     TerminalScreen {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -98,8 +113,22 @@ fun DetailsContent(
 
             when (state) {
                 is DetailsUiState.Loading -> {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        BlinkingCursor()
+                    Column(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.spacedBy(Spacing.sm)
+                    ) {
+                        // Skeleton заголовка (иконка + название + тип)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Skeleton(width = 72.dp, height = 72.dp, cornerRadius = 0.dp)
+                            Spacer(Modifier.width(Spacing.md))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Skeleton(height = 22.dp, width = 180.dp)
+                                Spacer(Modifier.height(Spacing.xs))
+                                Skeleton(height = 14.dp, width = 80.dp)
+                            }
+                        }
+                        Spacer(Modifier.height(Spacing.lg))
+                        repeat(3) { SkeletonReviewRow() }
                     }
                 }
                 is DetailsUiState.Error -> {
@@ -114,11 +143,16 @@ fun DetailsContent(
                         myReview = state.myReview,
                         myReactions = myReactions,
                         currentUserId = currentUserId,
+                        canLoadMoreReviews = canLoadMoreReviews,
+                        isLoadingMoreReviews = isLoadingMoreReviews,
+                        loadMoreReviewsError = loadMoreReviewsError,
                         onWriteReview = onWriteReview,
                         onReviewClick = onReviewClick,
                         onAuthorClick = onAuthorClick,
                         onLike = onLike,
-                        onDislike = onDislike
+                        onDislike = onDislike,
+                        onLoadMoreReviews = onLoadMoreReviews,
+                        onRetryLoadMoreReviews = onRetryLoadMoreReviews
                     )
                 }
             }
@@ -133,11 +167,16 @@ private fun DetailsBody(
     myReview: Review?,
     myReactions: Map<String, Reaction?>,
     currentUserId: String?,
+    canLoadMoreReviews: Boolean,
+    isLoadingMoreReviews: Boolean,
+    loadMoreReviewsError: String?,
     onWriteReview: () -> Unit,
     onReviewClick: (String) -> Unit,
     onAuthorClick: (String) -> Unit,
     onLike: (String) -> Unit,
-    onDislike: (String) -> Unit
+    onDislike: (String) -> Unit,
+    onLoadMoreReviews: () -> Unit,
+    onRetryLoadMoreReviews: () -> Unit
 ) {
     val symbol = item.symbol
     val iconKey = item.iconKey
@@ -147,7 +186,6 @@ private fun DetailsBody(
         contentPadding = PaddingValues(bottom = Spacing.xxl),
         verticalArrangement = Arrangement.spacedBy(Spacing.sm)
     ) {
-        // ── Заголовок айтема ──
         item(key = "header") {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 WireFrame(modifier = Modifier.size(72.dp), accent = true) {
@@ -199,7 +237,6 @@ private fun DetailsBody(
             }
         }
 
-        // ── Описание ──
         if (item.description.isNotBlank()) {
             item(key = "description") {
                 WireFrame(modifier = Modifier.fillMaxWidth()) {
@@ -216,7 +253,6 @@ private fun DetailsBody(
             }
         }
 
-        // ── Кнопка «оценить / изменить» ──
         item(key = "write_review") {
             if (myReview != null) {
                 WireButton(text = "изменить мой отзыв", onClick = onWriteReview)
@@ -225,7 +261,6 @@ private fun DetailsBody(
             }
         }
 
-        // ── Заголовок отзывов ──
         item(key = "reviews_header") {
             Spacer(Modifier.height(Spacing.lg))
             SectionHeader(text = "отзывы")
@@ -250,32 +285,48 @@ private fun DetailsBody(
                 )
             }
         }
-    }
-}
 
-@Preview(showBackground = true, backgroundColor = 0xFF000000)
-@Composable
-private fun DetailsPreview() {
-    CodeboxTheme {
-        DetailsContent(
-            state = DetailsUiState.Success(
-                item = Item(
-                    id = "1", name = "Kotlin", type = "Язык",
-                    description = "Статически типизированный язык",
-                    symbol = "KT",
-                    averageRating = 4.5
-                ),
-                reviews = listOf(
-                    Review(
-                        userId = "u1", itemId = "1", rating = 5,
-                        comment = "Отличный язык!",
-                        likes = 12, dislikes = 1,
-                        authorName = "Алена",
-                        itemName = "Kotlin"
+        if (loadMoreReviewsError != null) {
+            item(key = "reviews_load_more_error") {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(Spacing.md),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(Spacing.sm)
+                ) {
+                    AlertBox(text = loadMoreReviewsError)
+                    WireButton(
+                        text = "повторить",
+                        onClick = onRetryLoadMoreReviews,
+                        accent = true
                     )
-                ),
-                myReview = null
-            )
-        )
+                }
+            }
+        } else if (isLoadingMoreReviews) {
+            item(key = "reviews_loading_more") {
+                Box(
+                    modifier = Modifier.fillMaxWidth().padding(Spacing.md),
+                    contentAlignment = Alignment.Center
+                ) {
+                    SkeletonReviewRow()
+                }
+            }
+        } else if (canLoadMoreReviews) {
+            item(key = "reviews_load_more") {
+                Spacer(Modifier.height(Spacing.sm))
+                WireButton(
+                    text = "показать ещё отзывы",
+                    onClick = onLoadMoreReviews
+                )
+            }
+        } else if (reviews.isNotEmpty()) {
+            item(key = "reviews_end") {
+                Box(
+                    modifier = Modifier.fillMaxWidth().padding(Spacing.md),
+                    contentAlignment = Alignment.Center
+                ) {
+                    LabelText(text = "// конец отзывов")
+                }
+            }
+        }
     }
 }

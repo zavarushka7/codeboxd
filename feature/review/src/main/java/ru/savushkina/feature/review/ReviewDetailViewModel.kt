@@ -36,6 +36,10 @@ class ReviewDetailViewModel @Inject constructor(
 
     private val reviewId: String = Routes.decode(savedStateHandle.get<String>("reviewId"))
 
+    /** Если пришли из Activity по комментарию — его id. */
+    val initialCommentId: String? = Routes.decode(savedStateHandle.get<String>("commentId"))
+        .takeIf { it.isNotBlank() }
+
     private val _uiState = MutableStateFlow<ReviewDetailUiState>(ReviewDetailUiState.Loading)
     val uiState = _uiState.asStateFlow()
 
@@ -61,8 +65,6 @@ class ReviewDetailViewModel @Inject constructor(
     val error = _error.asStateFlow()
 
     private var hasLoadedMoreThanPage = false
-
-    private val profileCache = mutableMapOf<String, User>()
 
     init {
         val parsed = Review.parseReviewId(reviewId)
@@ -109,13 +111,22 @@ class ReviewDetailViewModel @Inject constructor(
                                 .thenBy { it.id }
                         )
 
-                    // Подменяем денормализованные authorName/authorAvatarBase64
-                    // актуальными значениями из users/{authorId}.
                     _comments.value = enrichCommentsWithProfiles(merged)
                     _commentsLoaded.value = true
 
                     if (!hasLoadedMoreThanPage) {
                         _canLoadMoreComments.value = hasMore
+                    }
+
+                    // Если пришли по commentId, а его ещё нет — догружаем страницы,
+                    // пока не найдём (или пока не кончатся).
+                    val target = initialCommentId
+                    if (target != null &&
+                        _comments.value.none { it.id == target } &&
+                        _canLoadMoreComments.value &&
+                        !_isLoadingMoreComments.value
+                    ) {
+                        loadMoreComments()
                     }
                 }
         }
@@ -216,11 +227,15 @@ class ReviewDetailViewModel @Inject constructor(
 
     private suspend fun enrichReviewsWithProfiles(reviews: List<Review>): List<Review> {
         if (reviews.isEmpty()) return reviews
-        fillProfileCache(reviews.map { it.userId })
+        val ids = reviews.map { it.userId }.filter { it.isNotBlank() }.distinct()
+        if (ids.isEmpty()) return reviews
+        val users = runCatching { userRepository.getUsersByIds(ids) }
+            .getOrDefault(emptyList())
+        if (users.isEmpty()) return reviews
+        val byId = users.associateBy { it.uid }
         return reviews.map { review ->
-            val user = profileCache[review.userId]
-            if (user == null) review
-            else review.copy(
+            val user: User = byId[review.userId] ?: return@map review
+            review.copy(
                 authorName = user.displayName,
                 authorAvatarBase64 = user.avatarBase64
             )
@@ -231,23 +246,19 @@ class ReviewDetailViewModel @Inject constructor(
         comments: List<ReviewComment>
     ): List<ReviewComment> {
         if (comments.isEmpty()) return comments
-        fillProfileCache(comments.mapNotNull { it.authorId })
+        val ids = comments.mapNotNull { it.authorId }.filter { it.isNotBlank() }.distinct()
+        if (ids.isEmpty()) return comments
+        val users = runCatching { userRepository.getUsersByIds(ids) }
+            .getOrDefault(emptyList())
+        if (users.isEmpty()) return comments
+        val byId = users.associateBy { it.uid }
         return comments.map { comment ->
-            val uid = comment.authorId
-            val user = uid?.let { profileCache[it] }
-            if (user == null) comment
-            else comment.copy(
+            val uid = comment.authorId ?: return@map comment
+            val user = byId[uid] ?: return@map comment
+            comment.copy(
                 authorName = user.displayName,
                 authorAvatarBase64 = user.avatarBase64
             )
-        }
-    }
-
-    private suspend fun fillProfileCache(uids: List<String>) {
-        for (uid in uids.distinct()) {
-            if (uid.isBlank() || profileCache.containsKey(uid)) continue
-            val user = runCatching { userRepository.getUser(uid) }.getOrNull()
-            if (user != null) profileCache[uid] = user
         }
     }
 }

@@ -17,7 +17,6 @@ sealed interface FeedUiState {
         val items: List<Item>,
         val isLoadingMore: Boolean = false,
         val canLoadMore: Boolean = true,
-        /** Ошибка последней попытки догрузки. Не влияет на уже загруженные items. */
         val loadMoreError: String? = null
     ) : FeedUiState
     data class Error(val message: String) : FeedUiState
@@ -31,31 +30,55 @@ class FeedViewModel @Inject constructor(
     private val _uiState = MutableStateFlow<FeedUiState>(FeedUiState.Loading)
     val uiState = _uiState.asStateFlow()
 
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing = _isRefreshing.asStateFlow()
+
     private var nextCursor: String? = null
 
     init {
-        loadFirstPage()
+        loadFirstPage(isRefresh = false)
     }
 
-    private fun loadFirstPage() {
+    /**
+     * @param isRefresh true — pull-to-refresh: НЕ сбрасываем UI в Loading,
+     *                  показываем индикатор PullToRefreshBox, данные обновятся
+     *                  по завершении. false — обычная первая загрузка.
+     */
+    private fun loadFirstPage(isRefresh: Boolean) {
         viewModelScope.launch {
-            _uiState.value = FeedUiState.Loading
+            if (isRefresh) {
+                _isRefreshing.value = true
+            } else {
+                _uiState.value = FeedUiState.Loading
+            }
             nextCursor = null
-            itemRepository.loadItemsPage(PAGE_SIZE, null)
-                .onSuccess { page ->
-                    nextCursor = page.nextCursor
-                    _uiState.value = FeedUiState.Success(
-                        items = page.items,
-                        canLoadMore = page.nextCursor != null,
-                        loadMoreError = null
-                    )
-                }
-                .onFailure { e ->
-                    _uiState.value = FeedUiState.Error(
-                        e.message ?: "Не удалось загрузить ленту"
-                    )
-                }
+            try {
+                itemRepository.loadItemsPage(PAGE_SIZE, null)
+                    .onSuccess { page ->
+                        nextCursor = page.nextCursor
+                        _uiState.value = FeedUiState.Success(
+                            items = page.items,
+                            canLoadMore = page.nextCursor != null,
+                            loadMoreError = null
+                        )
+                    }
+                    .onFailure { e ->
+                        // При refresh ошибку не показываем как полноэкранную —
+                        // оставляем старые данные, ошибка видна по индикатору.
+                        if (!isRefresh) {
+                            _uiState.value = FeedUiState.Error(
+                                e.message ?: "Не удалось загрузить ленту"
+                            )
+                        }
+                    }
+            } finally {
+                _isRefreshing.value = false
+            }
         }
+    }
+
+    fun refresh() {
+        loadFirstPage(isRefresh = true)
     }
 
     fun loadMore() {
@@ -83,8 +106,6 @@ class FeedViewModel @Inject constructor(
                     }
                 }
                 .onFailure { e ->
-                    // Уже загруженные элементы сохраняем. Показываем ошибку
-                    // под списком с кнопкой «повторить».
                     _uiState.update { state ->
                         if (state is FeedUiState.Success) {
                             state.copy(
@@ -97,7 +118,6 @@ class FeedViewModel @Inject constructor(
         }
     }
 
-    /** Повторить именно догрузку (после ошибки), не сбрасывая список. */
     fun retryLoadMore() {
         val current = _uiState.value as? FeedUiState.Success ?: return
         if (current.loadMoreError == null) return
@@ -106,7 +126,7 @@ class FeedViewModel @Inject constructor(
     }
 
     fun retry() {
-        loadFirstPage()
+        loadFirstPage(isRefresh = false)
     }
 
     private companion object {

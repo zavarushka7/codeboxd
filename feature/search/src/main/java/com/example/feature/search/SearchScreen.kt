@@ -8,12 +8,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ru.savushkina.core.designsystem.component.*
@@ -27,6 +25,7 @@ fun SearchScreen(
     onSearchByTypeClick: () -> Unit,
     onTopRatedClick: () -> Unit,
     onLowestRatedClick: () -> Unit,
+    onUserSearchClick: () -> Unit,
     viewModel: SearchViewModel = hiltViewModel()
 ) {
     val query by viewModel.query.collectAsStateWithLifecycle()
@@ -40,7 +39,8 @@ fun SearchScreen(
         onItemClick = onItemClick,
         onSearchByTypeClick = onSearchByTypeClick,
         onTopRatedClick = onTopRatedClick,
-        onLowestRatedClick = onLowestRatedClick
+        onLowestRatedClick = onLowestRatedClick,
+        onUserSearchClick = onUserSearchClick
     )
 }
 
@@ -53,7 +53,8 @@ fun SearchContent(
     onItemClick: (String) -> Unit = {},
     onSearchByTypeClick: () -> Unit = {},
     onTopRatedClick: () -> Unit = {},
-    onLowestRatedClick: () -> Unit = {}
+    onLowestRatedClick: () -> Unit = {},
+    onUserSearchClick: () -> Unit = {}
 ) {
     TerminalScreen {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -62,10 +63,6 @@ fun SearchContent(
             HorizontalLine()
             Spacer(Modifier.height(Spacing.md))
 
-            // Поле ввода + отдельная кнопка сброса справа.
-            // WireTextField не трогаем — trailingIcon в нём капризный
-            // (minimumInteractiveComponentSize конфликтует с width=40.dp
-            // внутри Box). Кнопка снаружи — надёжнее.
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
@@ -98,24 +95,23 @@ fun SearchContent(
 
             Spacer(Modifier.height(Spacing.md))
 
-            // ── Кнопки видны только при пустом поле ──
             if (query.isBlank()) {
                 FilterOptionButton("// поиск по типу", onSearchByTypeClick)
                 Spacer(Modifier.height(Spacing.sm))
                 FilterOptionButton("// с наибольшим рейтингом", onTopRatedClick)
                 Spacer(Modifier.height(Spacing.sm))
                 FilterOptionButton("// с наименьшим рейтингом", onLowestRatedClick)
+                Spacer(Modifier.height(Spacing.sm))
+                FilterOptionButton("// поиск людей", onUserSearchClick)
                 Spacer(Modifier.height(Spacing.md))
             }
 
             Box(modifier = Modifier.fillMaxSize()) {
                 when (state) {
-                    is SearchUiState.Idle -> {
-                        // Пусто — кнопки уже видны выше
-                    }
+                    is SearchUiState.Idle -> Unit
                     is SearchUiState.Loading -> {
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            BlinkingCursor()
+                        SkeletonList(count = 6) {
+                            SkeletonItemRow()
                         }
                     }
                     is SearchUiState.Error -> {

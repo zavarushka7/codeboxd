@@ -24,6 +24,14 @@ class ItemRepositoryImpl @Inject constructor(
     private val firestore: FirebaseFirestore
 ) : ItemRepository {
 
+    // ── Кэш типов (in-memory, TTL 5 минут) ──
+    // getTypes() читает всю коллекцию items (1000+ документов) — это дорого.
+    // Кэшируем результат, чтобы не дёргать Firestore на каждый экран.
+    @Volatile
+    private var cachedTypes: List<String> = emptyList()
+    @Volatile
+    private var cachedTypesAt: Long = 0L
+
     override fun observeItems(limit: Long): Flow<List<Item>> = callbackFlow {
         val listener = firestore.collection(COLLECTION)
             .orderBy("name", Query.Direction.ASCENDING)
@@ -83,33 +91,55 @@ class ItemRepositoryImpl @Inject constructor(
         }.getOrDefault(emptyList())
     }
 
+    /**
+     * Поиск по ключевым словам через `array-contains`.
+     *
+     * Схема: у каждого item есть поле `keywords: List<String>` —
+     * нормализованные слова из name/type/description (lowercase, distinct).
+     *
+     * Запрос: `whereArrayContains("keywords", q)`, где `q` — нормализованный
+     * ввод пользователя. Найдёт item, у которого в keywords есть **целое**
+     * слово `q`. Поиск «Kot» НЕ найдёт «Kotlin» — это осознанное ограничение.
+     *
+     * Требует индекса: keywords ASC + name ASC (создать в firestore.indexes.json).
+     */
     override suspend fun searchByName(query: String, limit: Long): List<Item> =
         runCatchingCancellable {
-            val q = query.trim().lowercase()
+            val q = normalizeKeyword(query)
             if (q.isBlank()) return@runCatchingCancellable emptyList()
 
             val snapshot = firestore.collection(COLLECTION)
-                .orderBy("name")
-                .limit(SEARCH_FETCH_LIMIT)
+                .whereArrayContains("keywords", q)
+                .orderBy("name", Query.Direction.ASCENDING)
+                .limit(limit)
                 .get()
                 .await()
 
-            snapshot.documents
-                .mapNotNull { it.toItemOrNull() }
-                .filter { it.name.lowercase().contains(q) }
-                .take(limit.toInt())
+            snapshot.documents.mapNotNull { it.toItemOrNull() }
+        }.onFailure { e ->
+            Log.w(TAG, "searchByName failed for query=$query", e)
         }.getOrDefault(emptyList())
 
     override suspend fun getTypes(): List<String> = runCatchingCancellable {
+        val now = System.currentTimeMillis()
+        val cached = cachedTypes
+        if (cached.isNotEmpty() && now - cachedTypesAt < TYPES_CACHE_TTL_MS) {
+            return@runCatchingCancellable cached
+        }
+
         val snapshot = firestore.collection(COLLECTION)
             .get()
             .await()
-        snapshot.documents
+        val types = snapshot.documents
             .mapNotNull { it.getString("type") }
             .map { it.trim() }
             .filter { it.isNotBlank() }
             .distinct()
             .sorted()
+
+        cachedTypes = types
+        cachedTypesAt = now
+        types
     }.getOrDefault(emptyList())
 
     override suspend fun getItemsByType(type: String, limit: Long): List<Item> =
@@ -129,16 +159,14 @@ class ItemRepositoryImpl @Inject constructor(
     /**
      * Топ по рейтингу.
      *
-     * Раньше был Firestore-запрос:
-     *   .whereGreaterThan("ratingCount", 0L).orderBy("averageRating", DESC)
-     * — он возвращал пусто, если у items нет поля ratingCount (созданы
-     * вручную через консоль) или если не задеплоен составной индекс.
-     *
-     * Теперь: забираем все items (limit 200), сортируем на клиенте по
-     * эффективному рейтингу (averageRating или ratingSum/ratingCount),
-     * фильтруем > 0. Не требует индексов и миграции данных.
-     * Для продакшена — лучше проставить averageRating всем items и
-     * оставить Firestore-запрос (см. комментарий в классе).
+     * ВАЖНО: при 1000+ items клиентская сортировка по первым 200 документам
+     * не даёт корректного «топа». Оставляем клиентскую сортировку как
+     * временный фикс, но для продакшена нужно:
+     *   1) проставить averageRating + ratingCount всем items,
+     *   2) вернуть Firestore-запрос:
+     *      .whereGreaterThan("ratingCount", 0)
+     *      .orderBy("averageRating", DESC)
+     *   3) задеплоить индексы из firestore.indexes.json.
      */
     override suspend fun getTopRated(limit: Long): List<Item> = runCatchingCancellable {
         val snapshot = firestore.collection(COLLECTION)
@@ -186,8 +214,6 @@ class ItemRepositoryImpl @Inject constructor(
     }
 
     private fun DocumentSnapshot.toItemOrNull(): Item? = runCatching {
-        // averageRating может отсутствовать в старых документах — считаем
-        // на клиенте из ratingSum/ratingCount, чтобы не терять рейтинг.
         val storedAverage = getDouble("averageRating")
         val computedAverage = run {
             val sum = getLong("ratingSum") ?: 0L
@@ -205,12 +231,19 @@ class ItemRepositoryImpl @Inject constructor(
         )
     }.getOrNull()
 
+    /**
+     * Нормализует поисковый ввод: lowercase, trim, схлопывает пробелы.
+     * Используется для сравнения с `keywords` (там тоже lowercase).
+     */
+    private fun normalizeKeyword(raw: String): String =
+        raw.trim().lowercase().replace(Regex("\\s+"), " ")
+
     private companion object {
         const val TAG = "ItemRepositoryImpl"
         const val COLLECTION = "items"
         const val FIRESTORE_IN_LIMIT = 30
-        const val SEARCH_FETCH_LIMIT = 200L
         const val TYPE_FETCH_LIMIT = 200L
         const val RATING_FETCH_LIMIT = 200L
+        const val TYPES_CACHE_TTL_MS = 5 * 60 * 1000L  // 5 минут
     }
 }

@@ -32,6 +32,7 @@ fun OnboardingScreen(
     OnboardingContent(
         state = state,
         onNameChange = viewModel::onNameChange,
+        onUsernameChange = viewModel::onUsernameChange,
         onRoleSelect = viewModel::onRoleSelect,
         onComplete = viewModel::complete,
         onBack = viewModel::signOut
@@ -42,6 +43,7 @@ fun OnboardingScreen(
 fun OnboardingContent(
     state: OnboardingState,
     onNameChange: (String) -> Unit = {},
+    onUsernameChange: (String) -> Unit = {},
     onRoleSelect: (Role) -> Unit = {},
     onComplete: () -> Unit = {},
     onBack: () -> Unit = {}
@@ -80,7 +82,33 @@ fun OnboardingContent(
                         placeholder = "Ваше имя"
                     )
 
+                    Spacer(Modifier.height(Spacing.md))
+
+                    WireTextField(
+                        value = state.username,
+                        onValueChange = onUsernameChange,
+                        label = "username",
+                        placeholder = "придумайте @handle"
+                    )
+
+                    Spacer(Modifier.height(Spacing.xs))
+
+                    LabelText(
+                        text = when {
+                            state.isCheckingUsername -> "// проверяем..."
+                            state.usernameAvailable == true -> "// @${state.username} свободен"
+                            state.usernameAvailable == false -> "// @${state.username} занят"
+                            else -> "// 3–20 символов, a-z, 0-9, _"
+                        },
+                        color = when {
+                            state.usernameAvailable == true -> MaterialTheme.colorScheme.primary
+                            state.usernameAvailable == false -> MaterialTheme.colorScheme.error
+                            else -> MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                    )
+
                     Spacer(Modifier.height(Spacing.xl))
+
                     LabelText(
                         text = "// выберите свою роль",
                         color = MaterialTheme.colorScheme.primary
@@ -122,7 +150,7 @@ private fun OnboardingPreviewEmpty() {
 private fun OnboardingPreviewSelected() {
     CodeboxTheme {
         OnboardingContent(
-            state = OnboardingState(name = "Алена", role = Role.DEVELOPMENT)
+            state = OnboardingState(name = "Алена", username = "alena", role = Role.DEVELOPMENT)
         )
     }
 }

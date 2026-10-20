@@ -11,7 +11,10 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
 import ru.savushkina.core.common.runCatchingCancellable
+import ru.savushkina.core.domain.FeedWriter
+import ru.savushkina.core.domain.Page
 import ru.savushkina.core.domain.ReviewRepository
+import ru.savushkina.core.model.FeedItemType
 import ru.savushkina.core.model.ItemConstraints
 import ru.savushkina.core.model.Reaction
 import ru.savushkina.core.model.Review
@@ -22,7 +25,8 @@ import javax.inject.Singleton
 
 @Singleton
 class ReviewRepositoryImpl @Inject constructor(
-    private val firestore: FirebaseFirestore
+    private val firestore: FirebaseFirestore,
+    private val feedWriter: FeedWriter
 ) : ReviewRepository {
 
     // ── Отзывы ──
@@ -41,11 +45,14 @@ class ReviewRepositoryImpl @Inject constructor(
         awaitClose { listener.remove() }
     }
 
-    override fun observeReviewsForItem(itemId: String): Flow<List<Review>> = callbackFlow {
+    override fun observeReviewsForItem(
+        itemId: String,
+        limit: Long
+    ): Flow<List<Review>> = callbackFlow {
         val listener = firestore.collection(COLLECTION_REVIEWS)
             .whereEqualTo("itemId", itemId)
             .orderBy("createdAt", Query.Direction.DESCENDING)
-            .limit(REVIEWS_PAGE_LIMIT)
+            .limit(limit)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) { close(error); return@addSnapshotListener }
                 if (isClosedForSend) return@addSnapshotListener
@@ -53,6 +60,29 @@ class ReviewRepositoryImpl @Inject constructor(
                 trySend(reviews)
             }
         awaitClose { listener.remove() }
+    }
+
+    override suspend fun loadMoreReviews(
+        itemId: String,
+        lastDocId: String,
+        limit: Long
+    ): Result<Page<Review>> = runCatchingCancellable {
+        var query = firestore.collection(COLLECTION_REVIEWS)
+            .whereEqualTo("itemId", itemId)
+            .orderBy("createdAt", Query.Direction.DESCENDING)
+            .limit(limit)
+
+        if (lastDocId.isNotBlank()) {
+            val lastDoc = firestore.collection(COLLECTION_REVIEWS)
+                .document(lastDocId)
+                .get()
+                .await()
+            if (lastDoc.exists()) query = query.startAfter(lastDoc)
+        }
+
+        val docs = query.get().await().documents
+        val reviews = docs.mapNotNull { it.toReviewOrNull() }
+        Page(items = reviews, nextCursor = docs.lastOrNull()?.id)
     }
 
     override suspend fun getReview(userId: String, itemId: String): Review? =
@@ -68,8 +98,11 @@ class ReviewRepositoryImpl @Inject constructor(
         val reviewRef = firestore.collection(COLLECTION_REVIEWS).document(review.reviewId)
         val itemRef = firestore.collection(COLLECTION_ITEMS).document(review.itemId)
 
+        val isNew = java.util.concurrent.atomic.AtomicBoolean(false)
+
         firestore.runTransaction { tx ->
             val existing = tx.get(reviewRef)
+            isNew.set(!existing.exists())
             val itemSnap = tx.get(itemRef)
             if (!itemSnap.exists()) {
                 throw IllegalStateException("Айтем не найден")
@@ -77,9 +110,7 @@ class ReviewRepositoryImpl @Inject constructor(
 
             val prevRating: Int? = if (existing.exists()) {
                 existing.getLong("rating")?.toInt()
-            } else {
-                null
-            }
+            } else null
 
             val createdAt = if (existing.exists())
                 existing.getTimestamp("createdAt") ?: Timestamp.now()
@@ -120,6 +151,22 @@ class ReviewRepositoryImpl @Inject constructor(
                 SetOptions.merge()
             )
         }.await()
+
+        if (isNew.get()) {
+            feedWriter.fanOut(
+                actorUid = review.userId,
+                sourceId = review.reviewId,
+                type = FeedItemType.FOLLOWING_REVIEW,
+                payload = FeedWriter.FeedPayload(
+                    actorName = review.authorName,
+                    actorAvatarBase64 = review.authorAvatarBase64,
+                    reviewId = review.reviewId,
+                    reviewComment = review.comment,
+                    itemName = review.itemName,
+                    rating = review.rating
+                )
+            )
+        }
         Unit
     }
 
@@ -185,6 +232,31 @@ class ReviewRepositoryImpl @Inject constructor(
             awaitClose { listener.remove() }
         }
 
+    override fun observeReactionsForReview(
+        reviewId: String
+    ): Flow<List<ReviewRepository.ReactionEntry>> = callbackFlow {
+        val listener = firestore.collection(COLLECTION_REACTIONS)
+            .whereEqualTo("reviewId", reviewId)
+            .orderBy("createdAt", Query.Direction.DESCENDING)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) { close(error); return@addSnapshotListener }
+                if (isClosedForSend) return@addSnapshotListener
+                val entries = snapshot?.documents?.mapNotNull { doc ->
+                    val uid = doc.getString("userId") ?: return@mapNotNull null
+                    val type = doc.getString("type")?.let {
+                        runCatching { Reaction.valueOf(it) }.getOrNull()
+                    } ?: return@mapNotNull null
+                    ReviewRepository.ReactionEntry(
+                        userId = uid,
+                        reaction = type,
+                        createdAtMillis = doc.getTimestamp("createdAt")?.toDate()?.time ?: 0L
+                    )
+                }.orEmpty()
+                trySend(entries)
+            }
+        awaitClose { listener.remove() }
+    }
+
     override suspend fun react(
         reviewId: String,
         userId: String,
@@ -194,21 +266,25 @@ class ReviewRepositoryImpl @Inject constructor(
         val reactionRef = firestore.collection(COLLECTION_REACTIONS)
             .document(reactionDocId(userId, reviewId))
 
+        var ownerUid: String? = null
+        var previousReaction: Reaction? = null
+
         firestore.runTransaction { tx ->
             val reviewSnap = tx.get(reviewRef)
             if (!reviewSnap.exists()) {
                 throw IllegalStateException("Отзыв не найден")
             }
+            ownerUid = reviewSnap.getString("userId")
             val reactionSnap = tx.get(reactionRef)
-            val previous = reactionSnap.getString("type")?.let {
+            previousReaction = reactionSnap.getString("type")?.let {
                 runCatching { Reaction.valueOf(it) }.getOrNull()
             }
-            if (previous == reaction) return@runTransaction
+            if (previousReaction == reaction) return@runTransaction
 
             var likes = reviewSnap.getLong("likes")?.toInt() ?: 0
             var dislikes = reviewSnap.getLong("dislikes")?.toInt() ?: 0
 
-            when (previous) {
+            when (previousReaction) {
                 Reaction.LIKE -> likes = (likes - 1).coerceAtLeast(0)
                 Reaction.DISLIKE -> dislikes = (dislikes - 1).coerceAtLeast(0)
                 null -> Unit
@@ -224,10 +300,34 @@ class ReviewRepositoryImpl @Inject constructor(
                 mapOf(
                     "userId" to userId,
                     "reviewId" to reviewId,
-                    "type" to reaction.name
+                    "type" to reaction.name,
+                    "createdAt" to Timestamp.now()
                 )
             )
         }.await()
+
+        val owner = ownerUid
+        if (owner != null && owner != userId) {
+            val review = runCatching { getReviewByDocId(reviewId) }.getOrNull()
+            val actor = runCatching {
+                firestore.collection(COLLECTION_USERS).document(userId).get().await()
+            }.getOrNull()
+            feedWriter.fanOut(
+                actorUid = userId,
+                sourceId = "${reactionDocId(userId, reviewId)}_${reaction.name}",
+                type = FeedItemType.REVIEW_REACTION,
+                payload = FeedWriter.FeedPayload(
+                    actorName = actor?.getString("name").orEmpty(),
+                    actorAvatarBase64 = actor?.getString("avatarBase64").orEmpty(),
+                    reviewId = reviewId,
+                    reviewComment = review?.comment.orEmpty(),
+                    itemName = review?.itemName.orEmpty(),
+                    reaction = reaction
+                ),
+                extraOwnerUid = owner
+            )
+        }
+        Unit
     }
 
     override suspend fun removeReaction(reviewId: String, userId: String): Result<Unit> =
@@ -350,8 +450,6 @@ class ReviewRepositoryImpl @Inject constructor(
     }
 
     override fun observeComments(reviewId: String): Flow<List<ReviewComment>> = callbackFlow {
-        // Запрашиваем PAGE_SIZE + 1, чтобы понять, есть ли ещё комментарии.
-        // ViewModel обрежет до PAGE_SIZE и выставит canLoadMore корректно.
         val listener = firestore.collection(COLLECTION_REVIEWS)
             .document(reviewId)
             .collection(COLLECTION_COMMENTS)
@@ -379,11 +477,30 @@ class ReviewRepositoryImpl @Inject constructor(
                 "text" to comment.text,
                 "createdAt" to Timestamp.now()
             )
-            firestore.collection(COLLECTION_REVIEWS)
+            val ref = firestore.collection(COLLECTION_REVIEWS)
                 .document(comment.reviewId)
                 .collection(COLLECTION_COMMENTS)
                 .add(data)
                 .await()
+
+            val review = runCatching { getReviewByDocId(comment.reviewId) }.getOrNull()
+            val ownerUid = review?.userId
+            if (!ownerUid.isNullOrBlank() && ownerUid != comment.authorId) {
+                feedWriter.fanOut(
+                    actorUid = comment.authorId.orEmpty(),
+                    sourceId = ref.id,
+                    type = FeedItemType.REVIEW_COMMENT,
+                    payload = FeedWriter.FeedPayload(
+                        actorName = comment.authorName,
+                        actorAvatarBase64 = comment.authorAvatarBase64,
+                        reviewId = comment.reviewId,
+                        reviewComment = review?.comment.orEmpty(),
+                        itemName = review?.itemName.orEmpty(),
+                        commentText = comment.text
+                    ),
+                    extraOwnerUid = ownerUid
+                )
+            }
             Unit
         }
 
@@ -398,6 +515,18 @@ class ReviewRepositoryImpl @Inject constructor(
         }
 
     // ── Вспомогательное ──
+
+    private suspend fun getReviewByDocId(reviewId: String): Review? =
+        runCatching {
+            val doc = firestore.collection(COLLECTION_REVIEWS)
+                .document(reviewId)
+                .get()
+                .await()
+            if (!doc.exists()) null else doc.toReview(
+                doc.getString("userId") ?: "",
+                doc.getString("itemId") ?: ""
+            )
+        }.getOrNull()
 
     private fun DocumentSnapshot.toReviewOrNull(): Review? = runCatching {
         toReview(getString("userId") ?: "", getString("itemId") ?: "")
@@ -439,6 +568,7 @@ class ReviewRepositoryImpl @Inject constructor(
         const val COLLECTION_ITEMS = "items"
         const val COLLECTION_COMMENTS = "comments"
         const val COLLECTION_REACTIONS = "reactions"
+        const val COLLECTION_USERS = "users"
         const val REVIEWS_PAGE_LIMIT = 50L
         const val REACTIONS_WHERE_IN_LIMIT = 30
     }

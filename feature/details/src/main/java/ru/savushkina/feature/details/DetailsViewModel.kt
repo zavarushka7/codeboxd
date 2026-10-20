@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import ru.savushkina.core.domain.AuthRepository
 import ru.savushkina.core.domain.ItemRepository
@@ -55,11 +56,18 @@ class DetailsViewModel @Inject constructor(
     private val _myReactions = MutableStateFlow<Map<String, Reaction?>>(emptyMap())
     val myReactions = _myReactions.asStateFlow()
 
-    private val _retry = MutableStateFlow(0)
+    private val _isLoadingMoreReviews = MutableStateFlow(false)
+    val isLoadingMoreReviews = _isLoadingMoreReviews.asStateFlow()
 
-    // Кэш профилей авторов: чтобы не дёргать users/{uid} на каждое
-    // обновление списка отзывов.
-    private val profileCache = mutableMapOf<String, User>()
+    private val _canLoadMoreReviews = MutableStateFlow(false)
+    val canLoadMoreReviews = _canLoadMoreReviews.asStateFlow()
+
+    private val _loadMoreReviewsError = MutableStateFlow<String?>(null)
+    val loadMoreReviewsError = _loadMoreReviewsError.asStateFlow()
+
+    private var nextReviewCursor: String? = null
+
+    private val _retry = MutableStateFlow(0)
 
     private val currentUid = authRepository.authState
         .map { it?.uid }
@@ -79,10 +87,17 @@ class DetailsViewModel @Inject constructor(
             _retry
                 .flatMapLatest {
                     _uiState.value = DetailsUiState.Loading
+                    nextReviewCursor = null
+                    _canLoadMoreReviews.value = false
+                    _loadMoreReviewsError.value = null
+
                     combine(
                         itemRepository.observeItemById(itemId),
                         currentUid.flatMapLatest { uid ->
-                            reviewRepository.observeReviewsForItem(itemId)
+                            reviewRepository.observeReviewsForItem(
+                                itemId = itemId,
+                                limit = ReviewRepository.DEFAULT_REVIEWS_PAGE_SIZE
+                            )
                                 .flatMapLatest { reviews ->
                                     if (uid == null || reviews.isEmpty()) {
                                         flowOf(reviews to emptyMap<String, Reaction?>())
@@ -113,35 +128,89 @@ class DetailsViewModel @Inject constructor(
                     if (item == null) {
                         _uiState.value = DetailsUiState.Error("Айтем не найден")
                     } else {
-                        // Подтягиваем актуальные имена/аватары авторов.
                         val freshReviews = enrichWithProfiles(quad.reviews)
                         val myReview = quad.uid?.let { u ->
                             freshReviews.find { it.userId == u }
                         }
-                        _uiState.value = DetailsUiState.Success(item, freshReviews, myReview)
+
+                        val headIds = freshReviews.map { it.reviewId }.toSet()
+                        val currentExtra = when (val s = _uiState.value) {
+                            is DetailsUiState.Success ->
+                                s.reviews.filterNot { it.reviewId in headIds }
+                            else -> emptyList()
+                        }
+                        val merged = (freshReviews + currentExtra)
+                            .distinctBy { it.reviewId }
+
+                        if (nextReviewCursor == null) {
+                            nextReviewCursor = if (
+                                freshReviews.size >= ReviewRepository.DEFAULT_REVIEWS_PAGE_SIZE
+                            ) {
+                                freshReviews.lastOrNull()?.reviewId
+                            } else null
+                            _canLoadMoreReviews.value = nextReviewCursor != null
+                        }
+
+                        _uiState.value = DetailsUiState.Success(item, merged, myReview)
                     }
                 }
         }
     }
 
+    fun loadMoreReviews() {
+        if (_isLoadingMoreReviews.value) return
+        if (!_canLoadMoreReviews.value) return
+        val cursor = nextReviewCursor ?: return
+        if (_loadMoreReviewsError.value != null) return
+
+        _isLoadingMoreReviews.value = true
+        _loadMoreReviewsError.value = null
+
+        viewModelScope.launch {
+            reviewRepository.loadMoreReviews(
+                itemId = itemId,
+                lastDocId = cursor,
+                limit = ReviewRepository.DEFAULT_REVIEWS_PAGE_SIZE
+            ).onSuccess { page ->
+                val fresh = enrichWithProfiles(page.items)
+                _uiState.update { state ->
+                    if (state is DetailsUiState.Success) {
+                        val merged = (state.reviews + fresh).distinctBy { it.reviewId }
+                        state.copy(reviews = merged)
+                    } else state
+                }
+                nextReviewCursor = page.nextCursor
+                _canLoadMoreReviews.value = page.nextCursor != null
+            }.onFailure { e ->
+                _loadMoreReviewsError.value = e.message ?: "Не удалось загрузить ещё"
+            }
+            _isLoadingMoreReviews.value = false
+        }
+    }
+
+    fun retryLoadMoreReviews() {
+        if (_loadMoreReviewsError.value == null) return
+        _loadMoreReviewsError.value = null
+        loadMoreReviews()
+    }
+
     /**
-     * Подменяет денормализованные authorName / authorAvatarBase64
-     * актуальными значениями из users/{authorId}.
-     * Кэширует профили в пределах ViewModel.
+     * Батч-подмена денормализованных authorName/authorAvatarBase64
+     * через `getUsersByIds` (whereIn по 30) + глобальный кэш.
      */
     private suspend fun enrichWithProfiles(reviews: List<Review>): List<Review> {
         if (reviews.isEmpty()) return reviews
-        val authorIds = reviews.map { it.userId }.distinct()
-        for (uid in authorIds) {
-            if (uid.isBlank()) continue
-            if (profileCache.containsKey(uid)) continue
-            val user = runCatching { userRepository.getUser(uid) }.getOrNull()
-            if (user != null) {
-                profileCache[uid] = user
-            }
-        }
+        val authorIds = reviews.map { it.userId }.filter { it.isNotBlank() }.distinct()
+        if (authorIds.isEmpty()) return reviews
+
+        val users: List<User> = runCatching {
+            userRepository.getUsersByIds(authorIds)
+        }.getOrDefault(emptyList())
+        if (users.isEmpty()) return reviews
+
+        val byId = users.associateBy { it.uid }
         return reviews.map { review ->
-            val user = profileCache[review.userId]
+            val user = byId[review.userId]
             if (user == null) review
             else review.copy(
                 authorName = user.displayName,

@@ -57,6 +57,8 @@ fun SettingsScreen(
     val isSaving by viewModel.isSaving.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
     val textCaseStyle by viewModel.textCaseStyle.collectAsStateWithLifecycle()
+    val isCheckingUsername by viewModel.isCheckingUsername.collectAsStateWithLifecycle()
+    val usernameAvailable by viewModel.usernameAvailable.collectAsStateWithLifecycle()
 
     var confirmSignOut by remember { mutableStateOf(false) }
 
@@ -71,9 +73,12 @@ fun SettingsScreen(
         draft = draft,
         isSaving = isSaving,
         error = error,
+        isCheckingUsername = isCheckingUsername,
+        usernameAvailable = usernameAvailable,
         onBack = onBack,
         onPickAvatar = { imagePicker.launch("image/*") },
         onNameChange = viewModel::onNameChange,
+        onUsernameChange = viewModel::onUsernameChange,
         onDescriptionChange = viewModel::onDescriptionChange,
         onRoleChange = viewModel::onRoleChange,
         onSave = { viewModel.save(onSuccess = onSaved) },
@@ -103,7 +108,7 @@ private fun SignOutDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.background)   // ← непрозрачный фон
+                    .background(MaterialTheme.colorScheme.background)
                     .padding(Spacing.md)
             ) {
                 LabelText(text = "// выйти из аккаунта?")
@@ -139,9 +144,12 @@ fun SettingsContent(
     draft: User? = null,
     isSaving: Boolean = false,
     error: String? = null,
+    isCheckingUsername: Boolean = false,
+    usernameAvailable: Boolean? = null,
     onBack: () -> Unit = {},
     onPickAvatar: () -> Unit = {},
     onNameChange: (String) -> Unit = {},
+    onUsernameChange: (String) -> Unit = {},
     onDescriptionChange: (String) -> Unit = {},
     onRoleChange: (Role) -> Unit = {},
     onSave: () -> Unit = {},
@@ -191,8 +199,11 @@ fun SettingsContent(
                         user = user,
                         isSaving = isSaving,
                         error = error,
+                        isCheckingUsername = isCheckingUsername,
+                        usernameAvailable = usernameAvailable,
                         onPickAvatar = onPickAvatar,
                         onNameChange = onNameChange,
+                        onUsernameChange = onUsernameChange,
                         onDescriptionChange = onDescriptionChange,
                         onRoleChange = onRoleChange,
                         onSave = onSave,
@@ -211,8 +222,11 @@ private fun SettingsForm(
     user: User,
     isSaving: Boolean,
     error: String?,
+    isCheckingUsername: Boolean,
+    usernameAvailable: Boolean?,
     onPickAvatar: () -> Unit,
     onNameChange: (String) -> Unit,
+    onUsernameChange: (String) -> Unit,
     onDescriptionChange: (String) -> Unit,
     onRoleChange: (Role) -> Unit,
     onSave: () -> Unit,
@@ -252,6 +266,30 @@ private fun SettingsForm(
                 label = "name",
                 placeholder = "ваше_имя",
                 enabled = !isSaving
+            )
+            Spacer(Modifier.height(Spacing.md))
+
+            WireTextField(
+                value = user.username,
+                onValueChange = onUsernameChange,
+                label = "username",
+                placeholder = "handle",
+                enabled = !isSaving
+            )
+            Spacer(Modifier.height(Spacing.xs))
+            LabelText(
+                text = when {
+                    isCheckingUsername -> "// проверяем..."
+                    usernameAvailable == true -> "// @${user.username} свободен"
+                    usernameAvailable == false -> "// @${user.username} занят"
+                    user.username.isBlank() -> "// 3–20 символов, a-z, 0-9, _"
+                    else -> "// @${user.username}"
+                },
+                color = when {
+                    usernameAvailable == true -> MaterialTheme.colorScheme.primary
+                    usernameAvailable == false -> MaterialTheme.colorScheme.error
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                }
             )
             Spacer(Modifier.height(Spacing.md))
 
@@ -351,6 +389,7 @@ private fun SettingsPreview() {
         uid = "u1",
         email = "alena@codebox.app",
         name = "Алена",
+        username = "alena",
         description = "Пишу на Kotlin.",
         role = Role.DEVELOPMENT
     )
