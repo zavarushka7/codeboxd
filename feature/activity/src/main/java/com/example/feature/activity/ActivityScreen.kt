@@ -37,6 +37,8 @@ import ru.savushkina.core.designsystem.component.WireButton
 import ru.savushkina.core.designsystem.component.WireFrame
 import ru.savushkina.core.designsystem.pattern.TerminalScreen
 import ru.savushkina.core.designsystem.theme.Spacing
+import ru.savushkina.core.model.AchievementLevels
+import ru.savushkina.core.model.AchievementType
 import ru.savushkina.core.model.FeedItem
 import ru.savushkina.core.model.FeedItemType
 import ru.savushkina.core.model.Reaction
@@ -48,6 +50,7 @@ import java.util.Locale
 fun ActivityScreen(
     onUserClick: (String) -> Unit,
     onReviewClick: (reviewId: String, commentId: String?) -> Unit,
+    onAchievementsClick: (userId: String) -> Unit,
     viewModel: ActivityViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -80,6 +83,7 @@ fun ActivityScreen(
                             state = s,
                             onUserClick = onUserClick,
                             onReviewClick = onReviewClick,
+                            onAchievementsClick = onAchievementsClick,
                             onLoadMore = viewModel::loadMore,
                             onRetryLoadMore = viewModel::retryLoadMore
                         )
@@ -95,6 +99,7 @@ private fun ActivityList(
     state: ActivityUiState.Success,
     onUserClick: (String) -> Unit,
     onReviewClick: (String, String?) -> Unit,
+    onAchievementsClick: (String) -> Unit,
     onLoadMore: () -> Unit,
     onRetryLoadMore: () -> Unit
 ) {
@@ -128,7 +133,8 @@ private fun ActivityList(
             ActivityRow(
                 item = item,
                 onUserClick = onUserClick,
-                onReviewClick = onReviewClick
+                onReviewClick = onReviewClick,
+                onAchievementsClick = onAchievementsClick
             )
         }
 
@@ -151,7 +157,8 @@ private fun ActivityList(
 private fun ActivityRow(
     item: FeedItem,
     onUserClick: (String) -> Unit,
-    onReviewClick: (String, String?) -> Unit
+    onReviewClick: (String, String?) -> Unit,
+    onAchievementsClick: (String) -> Unit
 ) {
     val actionText = when (item.type) {
         FeedItemType.NEW_FOLLOWER -> "подписался на вас"
@@ -161,6 +168,25 @@ private fun ActivityRow(
         FeedItemType.REVIEW_COMMENT -> "оставил комментарий"
         FeedItemType.FOLLOWING_REVIEW -> "оставил новый отзыв"
         FeedItemType.FOLLOWING_COMMENT -> "оставил комментарий"
+        FeedItemType.ACHIEVEMENT_UNLOCKED -> {
+            val type = runCatching { AchievementType.valueOf(item.achievementType) }.getOrNull()
+            val levelName = type?.let { AchievementLevels.levelName(it, item.achievementLevel) }
+                ?: ""
+            buildString {
+                append("получил награду «")
+                append(item.achievementType.lowercase())
+                append("»")
+                if (levelName.isNotBlank()) {
+                    append(" · ")
+                    append(levelName)
+                }
+                append(" (lvl ")
+                append(item.achievementLevel)
+                append("/")
+                append(AchievementLevels.MAX_LEVEL)
+                append(")")
+            }
+        }
     }
 
     WireFrame(modifier = Modifier.fillMaxWidth()) {
@@ -187,7 +213,12 @@ private fun ActivityRow(
                 Text(
                     text = actionText,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.clickable {
+                        if (item.type == FeedItemType.ACHIEVEMENT_UNLOCKED) {
+                            onAchievementsClick(item.actorUid)
+                        }
+                    }
                 )
 
                 when (item.type) {
@@ -210,7 +241,6 @@ private fun ActivityRow(
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onBackground,
                             modifier = Modifier.clickable {
-                                // sourceId в feedItemId — это commentId (см. FeedWriter в ReviewRepositoryImpl.addComment).
                                 onReviewClick(item.reviewId, item.sourceCommentId())
                             }
                         )
@@ -234,6 +264,16 @@ private fun ActivityRow(
                         )
                     }
                     FeedItemType.NEW_FOLLOWER -> Unit
+                    FeedItemType.ACHIEVEMENT_UNLOCKED -> {
+                        Spacer(Modifier.height(Spacing.xs))
+                        LabelText(
+                            text = "открыть награды >",
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.clickable {
+                                onAchievementsClick(item.actorUid)
+                            }
+                        )
+                    }
                 }
 
                 Spacer(Modifier.height(Spacing.xxs))
@@ -244,12 +284,11 @@ private fun ActivityRow(
 }
 
 /**
- * `feedItemId` = "review_comment_{commentId}_{ownerUid}" — вытаскиваем commentId.
- * Если формат не совпадает (старые записи), возвращаем null — откроется просто отзыв.
+ * `feedItemId` = "{type}_{sourceId}_{ownerUid}" — вытаскиваем commentId.
+ * Для ACHIEVEMENT_UNLOCKED sourceId = "TYPE_level", commentId не извлекается.
  */
 private fun FeedItem.sourceCommentId(): String? {
     if (type != FeedItemType.REVIEW_COMMENT) return null
-    // id: "${type.name.lowercase()}_${sourceId}_$ownerUid"
     val prefix = "${type.name.lowercase()}_"
     if (!id.startsWith(prefix)) return null
     val rest = id.removePrefix(prefix)

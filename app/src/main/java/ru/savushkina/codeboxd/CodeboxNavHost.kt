@@ -43,6 +43,7 @@ import ru.savushkina.core.designsystem.pattern.TerminalScreen
 import ru.savushkina.core.designsystem.theme.Spacing
 import ru.savushkina.core.navigation.FollowListMode
 import ru.savushkina.core.navigation.Routes
+import ru.savushkina.feature.achievements.AchievementsScreen
 import ru.savushkina.feature.activity.ActivityScreen
 import ru.savushkina.feature.auth.AuthScreen
 import ru.savushkina.feature.details.DetailsScreen
@@ -50,6 +51,7 @@ import ru.savushkina.feature.feed.FeedScreen
 import ru.savushkina.feature.onboarding.OnboardingScreen
 import ru.savushkina.feature.profile.FollowListScreen
 import ru.savushkina.feature.profile.ProfileScreen
+import ru.savushkina.feature.profile.ProfileUiState
 import ru.savushkina.feature.profile.ProfileViewModel
 import ru.savushkina.feature.review.ReviewDetailScreen
 import ru.savushkina.feature.review.ReviewReactionsScreen
@@ -170,6 +172,9 @@ fun CodeboxNavHost(
                     },
                     onReviewClick = { reviewId, commentId ->
                         navController.navigate(Routes.reviewDetail(reviewId, commentId))
+                    },
+                    onAchievementsClick = { userId ->
+                        navController.navigate(Routes.achievements(userId))
                     }
                 )
             }
@@ -319,6 +324,9 @@ fun CodeboxNavHost(
                     onFollowingClick = {
                         navController.navigate(Routes.followList(FollowListMode.FOLLOWING, null))
                     },
+                    onAchievementsClick = {
+                        navController.navigate(Routes.achievements(null))
+                    },
                     viewModel = profileViewModel
                 )
             }
@@ -328,6 +336,9 @@ fun CodeboxNavHost(
                 arguments = listOf(navArgument("userId") { type = NavType.StringType })
             ) { entry ->
                 val targetUserId = entry.arguments?.getString("userId").orEmpty()
+                val profileViewModel: ProfileViewModel = hiltViewModel()
+                val profileState by profileViewModel.uiState.collectAsStateWithLifecycle()
+
                 ProfileScreen(
                     onBack = { navController.popBackStack() },
                     onSettingsClick = {},
@@ -348,7 +359,12 @@ fun CodeboxNavHost(
                             Routes.followList(FollowListMode.FOLLOWING, targetUserId)
                         )
                     },
-                    viewModel = hiltViewModel()
+                    onAchievementsClick = {
+                        val uid = (profileState as? ProfileUiState.Success)?.user?.uid
+                            ?: targetUserId
+                        navController.navigate(Routes.achievements(uid))
+                    },
+                    viewModel = profileViewModel
                 )
             }
 
@@ -368,6 +384,21 @@ fun CodeboxNavHost(
                     onUserClick = { userId ->
                         navController.openUserProfile(userId, currentUserId)
                     }
+                )
+            }
+
+            composable(
+                route = Routes.ACHIEVEMENTS,
+                arguments = listOf(
+                    navArgument("userId") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    }
+                )
+            ) {
+                AchievementsScreen(
+                    onBack = { navController.popBackStack() }
                 )
             }
 

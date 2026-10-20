@@ -4,6 +4,7 @@ import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
+import ru.savushkina.core.data.AchievementRepositoryImpl
 import ru.savushkina.core.data.AuthErrorMapper
 import ru.savushkina.core.data.AuthRepositoryImpl
 import ru.savushkina.core.data.AvatarEncoderImpl
@@ -17,6 +18,7 @@ import ru.savushkina.core.data.ReviewRepositoryImpl
 import ru.savushkina.core.data.SessionRepositoryImpl
 import ru.savushkina.core.data.SettingsRepositoryImpl
 import ru.savushkina.core.data.UserRepositoryImpl
+import ru.savushkina.core.domain.AchievementRepository
 import ru.savushkina.core.domain.AuthRepository
 import ru.savushkina.core.domain.AvatarEncoder
 import ru.savushkina.core.domain.CollectionRepository
@@ -76,4 +78,9 @@ abstract class DataModule {
 
     @Binds @Singleton
     abstract fun bindFeedWriter(impl: FeedWriterImpl): FeedWriter
+
+    @Binds @Singleton
+    abstract fun bindAchievementRepository(
+        impl: AchievementRepositoryImpl
+    ): AchievementRepository
 }

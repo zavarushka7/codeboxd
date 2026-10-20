@@ -50,6 +50,8 @@ dependencies {
     implementation(project(":feature:feed"))
 
     implementation(project(":feature:activity"))
+    implementation(project(":feature:achievements"))
+
 
 
 

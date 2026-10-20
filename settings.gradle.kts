@@ -43,3 +43,4 @@ include(":feature:favourite_picker")
 
 include(":feature:collection")
 include(":feature:activity")
+include(":feature:achievements")

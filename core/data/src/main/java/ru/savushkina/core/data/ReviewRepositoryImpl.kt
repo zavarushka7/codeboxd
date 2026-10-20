@@ -6,11 +6,16 @@ import com.google.firebase.firestore.FieldPath
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import ru.savushkina.core.common.runCatchingCancellable
+import ru.savushkina.core.domain.AchievementRepository
 import ru.savushkina.core.domain.FeedWriter
 import ru.savushkina.core.domain.Page
 import ru.savushkina.core.domain.ReviewRepository
@@ -26,8 +31,15 @@ import javax.inject.Singleton
 @Singleton
 class ReviewRepositoryImpl @Inject constructor(
     private val firestore: FirebaseFirestore,
-    private val feedWriter: FeedWriter
+    private val feedWriter: FeedWriter,
+    private val achievementRepository: AchievementRepository
 ) : ReviewRepository {
+
+    /**
+     * Скоуп для fire-and-forget пересчёта наград. Не привязан к ViewModel,
+     * чтобы пережить уход с экрана.
+     */
+    private val backgroundScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     // ── Отзывы ──
 
@@ -167,6 +179,10 @@ class ReviewRepositoryImpl @Inject constructor(
                 )
             )
         }
+
+        backgroundScope.launch {
+            achievementRepository.checkAndNotifyLevelUps(review.userId)
+        }
         Unit
     }
 
@@ -212,6 +228,11 @@ class ReviewRepositoryImpl @Inject constructor(
                     SetOptions.merge()
                 )
             }.await()
+
+            // После удаления отзыва уровень может упасть — пересчитываем.
+            backgroundScope.launch {
+                achievementRepository.checkAndNotifyLevelUps(userId)
+            }
             Unit
         }
 
@@ -327,6 +348,13 @@ class ReviewRepositoryImpl @Inject constructor(
                 extraOwnerUid = owner
             )
         }
+
+        backgroundScope.launch {
+            achievementRepository.checkAndNotifyLevelUps(userId)
+            if (owner != null && owner != userId) {
+                achievementRepository.checkAndNotifyLevelUps(owner)
+            }
+        }
         Unit
     }
 
@@ -336,6 +364,8 @@ class ReviewRepositoryImpl @Inject constructor(
             val reactionRef = firestore.collection(COLLECTION_REACTIONS)
                 .document(reactionDocId(userId, reviewId))
 
+            var ownerUid: String? = null
+
             firestore.runTransaction { tx ->
                 val reactionSnap = tx.get(reactionRef)
                 val previous = reactionSnap.getString("type")?.let {
@@ -344,6 +374,7 @@ class ReviewRepositoryImpl @Inject constructor(
 
                 val reviewSnap = tx.get(reviewRef)
                 if (!reviewSnap.exists()) return@runTransaction
+                ownerUid = reviewSnap.getString("userId")
 
                 var likes = reviewSnap.getLong("likes")?.toInt() ?: 0
                 var dislikes = reviewSnap.getLong("dislikes")?.toInt() ?: 0
@@ -355,6 +386,15 @@ class ReviewRepositoryImpl @Inject constructor(
                 tx.update(reviewRef, mapOf("likes" to likes, "dislikes" to dislikes))
                 tx.delete(reactionRef)
             }.await()
+
+            backgroundScope.launch {
+                achievementRepository.checkAndNotifyLevelUps(userId)
+                val owner = ownerUid
+                if (owner != null && owner != userId) {
+                    achievementRepository.checkAndNotifyLevelUps(owner)
+                }
+            }
+            Unit
         }
 
     override fun observeMyReactionsForReviews(

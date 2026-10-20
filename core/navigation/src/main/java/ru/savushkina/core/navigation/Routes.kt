@@ -21,7 +21,7 @@ object Routes {
     fun userSearch() = USER_SEARCH
     const val REVIEW_FORM = "review_form/{itemId}"
 
-    // reviewId опционально + commentId опционально (для скролла к комментарию из Activity)
+    // reviewId + опциональный commentId (для скролла к комментарию из Activity)
     const val REVIEW_DETAIL = "review_detail/{reviewId}?commentId={commentId}"
 
     const val FAVOURITE_PICKER = "favourite_picker"
@@ -38,6 +38,9 @@ object Routes {
 
     // userId опционально — если не передан, показываем свой список.
     const val FOLLOW_LIST = "follow_list/{mode}?userId={userId}"
+
+    // userId опционально — если не передан, показываем свои награды.
+    const val ACHIEVEMENTS = "achievements?userId={userId}"
 
     // ── path args ──
     fun details(itemId: String) = "details/${Uri.encode(itemId)}"
@@ -74,6 +77,10 @@ object Routes {
         return if (userId.isNullOrBlank()) "$base?userId="
         else "$base?userId=${Uri.encode(userId)}"
     }
+
+    fun achievements(userId: String? = null): String =
+        if (userId.isNullOrBlank()) "achievements"
+        else "achievements?userId=${Uri.encode(userId)}"
 
     // ── декодер ──
     fun decode(raw: String?): String = raw?.let(Uri::decode).orEmpty()

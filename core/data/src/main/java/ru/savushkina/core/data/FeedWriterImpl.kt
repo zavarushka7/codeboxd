@@ -1,7 +1,6 @@
 package ru.savushkina.core.data
 
 import android.util.Log
-import com.google.firebase.firestore.FieldPath
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.tasks.await
@@ -17,14 +16,6 @@ class FeedWriterImpl @Inject constructor(
     private val firestore: FirebaseFirestore
 ) : FeedWriter {
 
-    /**
-     * Fan-out: пишем элемент в ленту каждого подписчика [actorUid] + в ленту
-     * [extraOwnerUid] (если задан и не совпадает с actorUid).
-     *
-     * Батч Firestore ограничен 500 операциями. Если подписчиков больше
-     * MAX_FANOUT — пишем только первым MAX_FANOUT и логируем warning
-     * (в production это должно уйти в Cloud Function).
-     */
     override suspend fun fanOut(
         actorUid: String,
         sourceId: String,
@@ -34,20 +25,20 @@ class FeedWriterImpl @Inject constructor(
     ): Result<Unit> = runCatchingCancellable {
         val now = System.currentTimeMillis()
 
-        // 1. Собираем получателей.
         val recipients = buildSet {
             val followers = firestore.collection(COLLECTION_FOLLOWS)
                 .whereEqualTo("followingId", actorUid)
-                .limit((FeedWriter.MAX_FANOUT).toLong())
+                .limit(FeedWriter.MAX_FANOUT.toLong())
                 .get()
                 .await()
                 .documents
                 .mapNotNull { it.getString("followerId") }
             addAll(followers)
-            if (!extraOwnerUid.isNullOrBlank() && extraOwnerUid != actorUid) {
-                add(extraOwnerUid)
-            }
+            if (!extraOwnerUid.isNullOrBlank()) add(extraOwnerUid)
             remove(actorUid)
+            // Для ACHIEVEMENT_UNLOCKED пишем и себе — чтобы уведомление
+            // было в собственной ленте.
+            if (type == FeedItemType.ACHIEVEMENT_UNLOCKED) add(actorUid)
         }
 
         if (recipients.isEmpty()) return@runCatchingCancellable
@@ -55,12 +46,10 @@ class FeedWriterImpl @Inject constructor(
         if (recipients.size >= FeedWriter.MAX_FANOUT) {
             Log.w(
                 TAG,
-                "fanOut: recipients=${recipients.size} hit MAX_FANOUT; " +
-                        "move to Cloud Function for actor=$actorUid"
+                "fanOut: recipients=${recipients.size} hit MAX_FANOUT"
             )
         }
 
-        // 2. Пишем батчем. Firestore батч = 500 операций.
         recipients.chunked(BATCH_LIMIT).forEach { chunk ->
             val batch = firestore.batch()
             chunk.forEach { ownerUid ->
@@ -81,6 +70,8 @@ class FeedWriterImpl @Inject constructor(
                     "rating" to payload.rating,
                     "commentText" to payload.commentText,
                     "reaction" to payload.reaction?.name,
+                    "achievementType" to payload.achievementType,
+                    "achievementLevel" to payload.achievementLevel,
                     "timestampMillis" to now
                 )
                 batch.set(ref, data, SetOptions.merge())

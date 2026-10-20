@@ -72,6 +72,8 @@ class FeedRepositoryImpl @Inject constructor(
             reaction = getString("reaction")?.let {
                 runCatching { Reaction.valueOf(it) }.getOrNull()
             },
+            achievementType = getString("achievementType") ?: "",
+            achievementLevel = getLong("achievementLevel")?.toInt() ?: 0,
             timestampMillis = getLong("timestampMillis") ?: 0L
         )
     }.getOrNull()

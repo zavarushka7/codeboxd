@@ -61,6 +61,7 @@ fun ProfileScreen(
     onCollectionsClick: (userId: String?) -> Unit,
     onFollowersClick: () -> Unit,
     onFollowingClick: () -> Unit,
+    onAchievementsClick: () -> Unit,
     viewModel: ProfileViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -99,7 +100,8 @@ fun ProfileScreen(
         },
         onFollowersClick = onFollowersClick,
         onFollowingClick = onFollowingClick,
-        onToggleFollow = viewModel::toggleFollow
+        onToggleFollow = viewModel::toggleFollow,
+        onAchievementsClick = onAchievementsClick
     )
 }
 
@@ -126,7 +128,8 @@ fun ProfileContent(
     onCollectionsClick: () -> Unit = {},
     onFollowersClick: () -> Unit = {},
     onFollowingClick: () -> Unit = {},
-    onToggleFollow: () -> Unit = {}
+    onToggleFollow: () -> Unit = {},
+    onAchievementsClick: () -> Unit = {}
 ) {
     TerminalScreen {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -201,7 +204,8 @@ fun ProfileContent(
                             onCollectionsClick = onCollectionsClick,
                             onFollowersClick = onFollowersClick,
                             onFollowingClick = onFollowingClick,
-                            onToggleFollow = onToggleFollow
+                            onToggleFollow = onToggleFollow,
+                            onAchievementsClick = onAchievementsClick
                         )
                     }
                 }
@@ -227,7 +231,8 @@ private fun ProfileBody(
     onCollectionsClick: () -> Unit,
     onFollowersClick: () -> Unit,
     onFollowingClick: () -> Unit,
-    onToggleFollow: () -> Unit
+    onToggleFollow: () -> Unit,
+    onAchievementsClick: () -> Unit
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -318,6 +323,8 @@ private fun ProfileBody(
                 )
                 Spacer(Modifier.height(Spacing.md))
                 WireButton(text = "коллекции", onClick = onCollectionsClick)
+                Spacer(Modifier.height(Spacing.sm))
+                WireButton(text = "награды", onClick = onAchievementsClick)
             }
         }
 
