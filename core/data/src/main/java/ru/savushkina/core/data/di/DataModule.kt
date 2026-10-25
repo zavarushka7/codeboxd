@@ -17,6 +17,7 @@ import ru.savushkina.core.data.ItemRepositoryImpl
 import ru.savushkina.core.data.ReviewRepositoryImpl
 import ru.savushkina.core.data.SessionRepositoryImpl
 import ru.savushkina.core.data.SettingsRepositoryImpl
+import ru.savushkina.core.data.SuggestionRepositoryImpl
 import ru.savushkina.core.data.UserRepositoryImpl
 import ru.savushkina.core.domain.AchievementRepository
 import ru.savushkina.core.domain.AuthRepository
@@ -31,6 +32,7 @@ import ru.savushkina.core.domain.ItemRepository
 import ru.savushkina.core.domain.ReviewRepository
 import ru.savushkina.core.domain.SessionRepository
 import ru.savushkina.core.domain.SettingsRepository
+import ru.savushkina.core.domain.SuggestionRepository
 import ru.savushkina.core.domain.UserRepository
 import javax.inject.Singleton
 
@@ -83,4 +85,10 @@ abstract class DataModule {
     abstract fun bindAchievementRepository(
         impl: AchievementRepositoryImpl
     ): AchievementRepository
+
+    // ── НОВОЕ ──
+    @Binds @Singleton
+    abstract fun bindSuggestionRepository(
+        impl: SuggestionRepositoryImpl
+    ): SuggestionRepository
 }

@@ -29,7 +29,6 @@ android {
 
 dependencies {
     // Core-модули
-
     implementation(project(":feature:collection"))
     implementation(project(":feature:favourite_picker"))
     implementation(project(":feature:search"))
@@ -52,8 +51,8 @@ dependencies {
     implementation(project(":feature:activity"))
     implementation(project(":feature:achievements"))
 
-
-
+    // ── НОВОЕ ──
+    implementation(project(":feature:suggestion"))
 
     // Compose
     implementation(platform(libs.androidx.compose.bom))
@@ -71,7 +70,7 @@ dependencies {
     // Firebase — BoM ДО библиотек
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.auth)
-    implementation(libs.firebase.firestore)   // добавьте, если нужно
+    implementation(libs.firebase.firestore)
 
     // Hilt
     implementation(libs.hilt.android)

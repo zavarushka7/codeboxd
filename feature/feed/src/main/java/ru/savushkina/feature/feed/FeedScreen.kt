@@ -4,12 +4,20 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -21,6 +29,7 @@ import ru.savushkina.core.designsystem.pattern.TerminalScreen
 import ru.savushkina.core.designsystem.theme.CodeboxTheme
 import ru.savushkina.core.designsystem.theme.Spacing
 import ru.savushkina.core.model.Item
+import ru.savushkina.feature.suggestion.SuggestionDialog
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -31,15 +40,39 @@ fun FeedScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
 
-    FeedContent(
-        state = state,
-        isRefreshing = isRefreshing,
-        onItemClick = onItemClick,
-        onRetry = viewModel::retry,
-        onRefresh = viewModel::refresh,
-        onLoadMore = viewModel::loadMore,
-        onRetryLoadMore = viewModel::retryLoadMore
-    )
+    var showSuggestion by remember { mutableStateOf(false) }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        FeedContent(
+            state = state,
+            isRefreshing = isRefreshing,
+            onItemClick = onItemClick,
+            onRetry = viewModel::retry,
+            onRefresh = viewModel::refresh,
+            onLoadMore = viewModel::loadMore,
+            onRetryLoadMore = viewModel::retryLoadMore
+        )
+
+        FloatingActionButton(
+            onClick = { showSuggestion = true },
+            containerColor = MaterialTheme.colorScheme.primary,
+            contentColor = MaterialTheme.colorScheme.onPrimary,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(Spacing.lg)
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Add,
+                contentDescription = "Предложить айтем"
+            )
+        }
+    }
+
+    if (showSuggestion) {
+        SuggestionDialog(
+            onDismiss = { showSuggestion = false }
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

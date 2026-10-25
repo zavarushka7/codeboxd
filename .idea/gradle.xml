@@ -31,6 +31,7 @@
             <option value="$PROJECT_DIR$/feature/review" />
             <option value="$PROJECT_DIR$/feature/search" />
             <option value="$PROJECT_DIR$/feature/settings" />
+            <option value="$PROJECT_DIR$/feature/suggestion" />
           </set>
         </option>
       </GradleProjectSettings>
