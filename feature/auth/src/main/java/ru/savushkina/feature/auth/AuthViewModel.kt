@@ -19,12 +19,9 @@ data class AuthState(
     val isLoading: Boolean = false,
     val isPasswordVisible: Boolean = false,
     val isDone: Boolean = false,
-    /** Ошибка конкретного поля ввода (валидация). Сбрасывается при правке поля. */
     val fieldError: String? = null,
-    /** Ошибка отправки формы (сеть/сервер). Не сбрасывается при правке полей. */
     val submitError: String? = null
 ) {
-    /** Совместимое свойство для UI: показывает первую доступную ошибку. */
     val error: String?
         get() = fieldError ?: submitError
 }
@@ -52,12 +49,16 @@ class AuthViewModel @Inject constructor(
     }
 
     /**
-     * Вызывается UI после обработки [AuthState.isDone] (например, после навигации),
-     * чтобы событие не «залипло» при повороте экрана / повторной подписке.
+     * Вызывается UI после обработки [AuthState.isDone] (например, из
+     * DisposableEffect.onDispose при уходе с экрана). Сбрасываем оба флага —
+     * isDone и isLoading — на случай, если по какой-то причине isLoading
+     * остался true. UI после этого снова покажет форму, что корректно:
+     * если пользователь вернулся на AuthScreen, он ожидает увидеть форму.
      */
     fun onDoneHandled() {
-        if (_state.value.isDone) {
-            _state.value = _state.value.copy(isDone = false)
+        val current = _state.value
+        if (current.isDone || current.isLoading) {
+            _state.value = current.copy(isDone = false, isLoading = false)
         }
     }
 
@@ -79,19 +80,15 @@ class AuthViewModel @Inject constructor(
                 submitError = null
             )
 
-            // Работаем с Result репозитория напрямую — без двойного оборачивания.
             val signInResult = runCatchingCancellable {
                 authRepository.signIn(email, password)
             }.getOrElse { e ->
-                // Сюда попадаем только если runCatchingCancellable поймал не-Result исключение
-                // (например, CancellationException пробрасывается — см. реализацию).
                 handleUnexpectedFailure(e)
                 return@launch
             }
 
             signInResult.fold(
                 onSuccess = {
-                    // Симметрия с signUp: гарантируем профиль. Идемпотентно.
                     val profileResult = runCatchingCancellable {
                         val uid = authRepository.currentUid()
                             ?: throw IllegalStateException("Нет uid после успешного входа")
@@ -106,9 +103,6 @@ class AuthViewModel @Inject constructor(
                             _state.value = _state.value.copy(isLoading = false, isDone = true)
                         },
                         onFailure = { e ->
-                            // Вход выполнен, но профиль не создан.
-                            // НЕ ставим isDone=true: покажем ошибку, пользователь повторит.
-                            // ensureUserExists идемпотентен — повтор безопасен.
                             _state.value = _state.value.copy(
                                 isLoading = false,
                                 isDone = false,
@@ -118,10 +112,6 @@ class AuthViewModel @Inject constructor(
                     )
                 },
                 onFailure = { e ->
-                    // НЕ вызываем signOut(): при сетевой ошибке до попытки входа
-                    // это разлогинило бы активную сессию. Если нужен явный сброс —
-                    // делайте его только после подтверждения, что вход начался
-                    // (например, сравнив currentUid() до и после).
                     _state.value = _state.value.copy(
                         isLoading = false,
                         isDone = false,
@@ -173,10 +163,6 @@ class AuthViewModel @Inject constructor(
                             _state.value = _state.value.copy(isLoading = false, isDone = true)
                         },
                         onFailure = { e ->
-                            // Аккаунт создан, но профиль — нет.
-                            // Показываем ошибку; повторный signUp() вернёт EMAIL_EXISTS,
-                            // поэтому UI должен предложить «Войти» (ensureUserExists
-                            // теперь вызывается и в signIn — повтор безопасен).
                             _state.value = _state.value.copy(
                                 isLoading = false,
                                 isDone = false,
@@ -196,12 +182,7 @@ class AuthViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Страховка: сбрасываем isLoading, чтобы UI не залип, и логируем неожиданный сбой.
-     * Здесь не показываем пользователю технические детали.
-     */
     private fun handleUnexpectedFailure(e: Throwable) {
-        // Если в проекте есть логгер — залогируйте e здесь.
         _state.value = _state.value.copy(
             isLoading = false,
             isDone = false,

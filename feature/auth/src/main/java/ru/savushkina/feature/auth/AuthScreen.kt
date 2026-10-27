@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,6 +36,21 @@ fun AuthScreen(
     viewModel: AuthViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+
+    // ВАЖНО: isDone — это СОБЫТИЕ «форма обработана, можно уходить».
+    // Оно должно сбрасываться, когда AuthScreen уходит из композиции
+    // (навигация по navTarget = FEED). Иначе при повторном показе экрана
+    // (deep link, back из FEED через сценарий, который оставил AUTH в стеке,
+    // или пересоздание Activity с сохранённым NavBackStackEntry) UI увидит
+    // isDone = true и покажет вечный спиннер.
+    //
+    // onDispose вызывается ровно в момент, когда composable удаляется
+    // из композиции. Навигация NavHost'а удаляет AuthScreen — onDispose
+    // срабатывает → isDone сбрасывается.
+    DisposableEffect(viewModel) {
+        onDispose { viewModel.onDoneHandled() }
+    }
+
     AuthContent(
         state = state,
         onEmailChange = viewModel::onEmailChange,
@@ -55,8 +71,6 @@ fun AuthContent(
     onSignUp: () -> Unit = {}
 ) {
     TerminalScreen {
-        // isLoading || isDone — держим спиннер до навигации по navTarget,
-        // чтобы форма не мелькнула и не была кликабельной повторно.
         if (state.isLoading || state.isDone) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 BlinkingCursor()
@@ -123,4 +137,3 @@ fun AuthContent(
 private fun AuthPreviewEmpty() {
     CodeboxTheme { AuthContent(state = AuthState()) }
 }
-

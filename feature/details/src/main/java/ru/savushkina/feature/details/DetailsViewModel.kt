@@ -5,6 +5,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
@@ -74,6 +76,13 @@ class DetailsViewModel @Inject constructor(
         .distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.Eagerly, authRepository.currentUid())
 
+    /**
+     * Флаг «мы уже видели не-null Item». Переживает повторные null и
+     * позволяет отличить «документа нет» от «ещё не загрузился».
+     */
+    @Volatile
+    private var hasSeenItem: Boolean = false
+
     init {
         if (itemId.isBlank()) {
             _uiState.value = DetailsUiState.Error("Некорректный ID айтема")
@@ -84,12 +93,20 @@ class DetailsViewModel @Inject constructor(
 
     private fun observe() {
         viewModelScope.launch {
+            // Job, который через NULL_TIMEOUT_MS переведёт Loading → Error,
+            // если Item так и не пришёл. Отменяется при получении Item
+            // или при новом retry.
+            var pendingNullJob: Job? = null
+
             _retry
                 .flatMapLatest {
                     _uiState.value = DetailsUiState.Loading
+                    hasSeenItem = false
                     nextReviewCursor = null
                     _canLoadMoreReviews.value = false
                     _loadMoreReviewsError.value = null
+                    pendingNullJob?.cancel()
+                    pendingNullJob = null
 
                     combine(
                         itemRepository.observeItemById(itemId),
@@ -125,35 +142,64 @@ class DetailsViewModel @Inject constructor(
                 .collect { quad ->
                     _myReactions.value = quad.reactions
                     val item = quad.item
-                    if (item == null) {
-                        _uiState.value = DetailsUiState.Error("Айтем не найден")
-                    } else {
-                        val freshReviews = enrichWithProfiles(quad.reviews)
-                        val myReview = quad.uid?.let { u ->
-                            freshReviews.find { it.userId == u }
-                        }
 
-                        val headIds = freshReviews.map { it.reviewId }.toSet()
-                        val currentExtra = when (val s = _uiState.value) {
-                            is DetailsUiState.Success ->
-                                s.reviews.filterNot { it.reviewId in headIds }
-                            else -> emptyList()
+                    when {
+                        item != null -> {
+                            // Пришёл реальный Item — отменяем дедлайн,
+                            // запоминаем, что документ существует.
+                            hasSeenItem = true
+                            pendingNullJob?.cancel()
+                            pendingNullJob = null
+                            applySuccess(item = item, uid = quad.uid, reviews = quad.reviews)
                         }
-                        val merged = (freshReviews + currentExtra)
-                            .distinctBy { it.reviewId }
-
-                        if (nextReviewCursor == null) {
-                            nextReviewCursor = if (
-                                freshReviews.size >= ReviewRepository.DEFAULT_REVIEWS_PAGE_SIZE
-                            ) {
-                                freshReviews.lastOrNull()?.reviewId
-                            } else null
-                            _canLoadMoreReviews.value = nextReviewCursor != null
+                        hasSeenItem -> {
+                            // Item уже был, а теперь null — значит его удалили.
+                            pendingNullJob?.cancel()
+                            pendingNullJob = null
+                            _uiState.value = DetailsUiState.Error("Айтем не найден")
                         }
-
-                        _uiState.value = DetailsUiState.Success(item, merged, myReview)
+                        else -> {
+                            // Первый эмит null — НЕ ставим Error сразу.
+                            // Firestore может прислать «пустой» кэш-снапшот
+                            // до реального. Запускаем таймаут: если за
+                            // NULL_TIMEOUT_MS Item не придёт, значит документа нет.
+                            if (pendingNullJob == null) {
+                                pendingNullJob = viewModelScope.launch {
+                                    delay(NULL_TIMEOUT_MS)
+                                    if (!hasSeenItem && _uiState.value is DetailsUiState.Loading) {
+                                        _uiState.value = DetailsUiState.Error("Айтем не найден")
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
+        }
+    }
+
+    private fun applySuccess(item: Item, uid: String?, reviews: List<Review>) {
+        viewModelScope.launch {
+            val freshReviews = enrichWithProfiles(reviews)
+            val myReview = uid?.let { u -> freshReviews.find { it.userId == u } }
+
+            val headIds = freshReviews.map { it.reviewId }.toSet()
+            val currentExtra = when (val s = _uiState.value) {
+                is DetailsUiState.Success ->
+                    s.reviews.filterNot { it.reviewId in headIds }
+                else -> emptyList()
+            }
+            val merged = (freshReviews + currentExtra).distinctBy { it.reviewId }
+
+            if (nextReviewCursor == null) {
+                nextReviewCursor = if (
+                    freshReviews.size >= ReviewRepository.DEFAULT_REVIEWS_PAGE_SIZE
+                ) {
+                    freshReviews.lastOrNull()?.reviewId
+                } else null
+                _canLoadMoreReviews.value = nextReviewCursor != null
+            }
+
+            _uiState.value = DetailsUiState.Success(item, merged, myReview)
         }
     }
 
@@ -194,10 +240,6 @@ class DetailsViewModel @Inject constructor(
         loadMoreReviews()
     }
 
-    /**
-     * Батч-подмена денормализованных authorName/authorAvatarBase64
-     * через `getUsersByIds` (whereIn по 30) + глобальный кэш.
-     */
     private suspend fun enrichWithProfiles(reviews: List<Review>): List<Review> {
         if (reviews.isEmpty()) return reviews
         val authorIds = reviews.map { it.userId }.filter { it.isNotBlank() }.distinct()
@@ -235,6 +277,7 @@ class DetailsViewModel @Inject constructor(
         }
     }
 
+
     fun onDislike(reviewId: String) {
         val uid = authRepository.currentUid() ?: return
         viewModelScope.launch {
@@ -253,4 +296,13 @@ class DetailsViewModel @Inject constructor(
         val reviews: List<Review>,
         val reactions: Map<String, Reaction?>
     )
+
+    private companion object {
+        /**
+         * Сколько ждать первого не-null Item после первого эмита null.
+         * 1500 мс — с запасом на холодный старт и медленную сеть.
+         * Если дольше — считаем, что документа нет.
+         */
+        const val NULL_TIMEOUT_MS = 1500L
+    }
 }

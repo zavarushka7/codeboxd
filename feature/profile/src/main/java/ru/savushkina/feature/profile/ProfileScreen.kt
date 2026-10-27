@@ -76,6 +76,13 @@ fun ProfileScreen(
     val isFollowing by viewModel.isFollowing.collectAsStateWithLifecycle()
     val followActionLoading by viewModel.followActionLoading.collectAsStateWithLifecycle()
 
+    // ВАЖНО: uid для навигации берём из route (viewModel.targetUserId),
+    // а не из state.user.uid. state может быть Loading (uid ещё не пришёл),
+    // а навигация должна вести на правильный профиль. И getUser(targetUserId)
+    // может вернуть документ с другим uid (кэш/ошибка) — тогда бы мы ушли
+    // не в тот профиль.
+    val collectionsOwnerUid: String? = if (isOwnProfile) null else viewModel.targetUserId
+
     ProfileContent(
         state = state,
         reviews = reviews,
@@ -94,10 +101,7 @@ fun ProfileScreen(
         onReviewClick = onReviewClick,
         onAddFavouriteClick = onAddFavouriteClick,
         onRemoveFavourite = viewModel::removeFavourite,
-        onCollectionsClick = {
-            val uid = (state as? ProfileUiState.Success)?.user?.uid
-            onCollectionsClick(if (isOwnProfile) null else uid)
-        },
+        onCollectionsClick = { onCollectionsClick(collectionsOwnerUid) },
         onFollowersClick = onFollowersClick,
         onFollowingClick = onFollowingClick,
         onToggleFollow = viewModel::toggleFollow,
@@ -351,12 +355,6 @@ private fun ProfileBody(
     }
 }
 
-/**
- * Счётчики подписчиков/подписок.
- *
- * Оба счётчика кликабельны всегда — и в своём, и в чужом профиле.
- * Список открывается через FollowListScreen с userId (свой/чужой).
- */
 @Composable
 private fun FollowStatsRow(
     isOwnProfile: Boolean,

@@ -83,62 +83,104 @@ class AchievementRepositoryImpl @Inject constructor(
 
     override suspend fun checkAndNotifyLevelUps(userId: String): Result<List<Achievement>> =
         runCatchingCancellable {
+            // ── Шаг 1. Считаем статистику ДО транзакции ──
+            // computeStats читает коллекцию reviews/reactions — это не атомарно
+            // с users/{uid}, но нам важно только, чтобы уровень не терялся.
+            // Если между stats и транзакцией появился новый отзыв — следующий
+            // вызов checkAndNotifyLevelUps (из следующего отзыва/реакции)
+            // догонит. Уровень не откатывается вниз, потому что транзакция
+            // пишет только `newLevel > oldLevel`.
+            val stats = computeStats(userId).getOrThrow()
+
             val userRef = firestore.collection(COLLECTION_USERS).document(userId)
-            val userSnap = userRef.get().await()
-            val storedLevels: Map<String, Long> =
-                (userSnap.get("achievementLevels") as? Map<*, *>)
-                    ?.mapNotNull { (k, v) ->
-                        val key = k as? String ?: return@mapNotNull null
-                        val value = (v as? Number)?.toLong() ?: return@mapNotNull null
-                        key to value
+
+            // ── Шаг 2. Транзакция: чтение achievementLevels + запись новых ──
+            // Firestore сериализует транзакции по одному и тому же документу,
+            // поэтому параллельные checkAndNotifyLevelUps не перезапишут
+            // друг друга: один увидит `oldLevel`, второй — уже обновлённый
+            // `oldLevel` и не запишет понижение.
+            //
+            // ВАЖНО: транзакция ВОЗВРАЩАЕТ список levelUps, для которых
+            // реально произошло обновление. Финальный fanOut делаем уже
+            // ПОСЛЕ коммита транзакции, и только для этого списка.
+            // Иначе при гонке fanOut выполнится N раз для одного и того же
+            // (type, level) и зальёт ленты подписчиков дублями.
+            val levelUps: List<Achievement> = firestore.runTransaction { tx ->
+                val userSnap = tx.get(userRef)
+                val storedLevels: Map<String, Long> =
+                    (userSnap.get("achievementLevels") as? Map<*, *>)
+                        ?.mapNotNull { (k, v) ->
+                            val key = k as? String ?: return@mapNotNull null
+                            val value = (v as? Number)?.toLong() ?: return@mapNotNull null
+                            key to value
+                        }
+                        ?.toMap()
+                        .orEmpty()
+
+                val ups = mutableListOf<Achievement>()
+                val levelsToWrite = mutableMapOf<String, Any>()
+
+                AchievementType.entries.forEach { type ->
+                    val value = stats.valueFor(type)
+                    val newLevel = AchievementLevels.levelFor(type, value)
+                    val oldLevel = (storedLevels[type.name] ?: 0L).toInt()
+                    if (newLevel > oldLevel) {
+                        ups += Achievement(
+                            type = type,
+                            level = newLevel,
+                            currentValue = value,
+                            nextThreshold = AchievementLevels.nextThreshold(type, newLevel),
+                            levelName = AchievementLevels.levelName(type, newLevel),
+                            description = AchievementLevels.descriptions[type] ?: "",
+                            iconKey = AchievementLevels.icons[type] ?: "code"
+                        )
+                        levelsToWrite[type.name] = newLevel
                     }
-                    ?.toMap()
+                }
+
+                if (levelsToWrite.isNotEmpty()) {
+                    tx.set(
+                        userRef,
+                        mapOf("achievementLevels" to levelsToWrite),
+                        SetOptions.merge()
+                    )
+                }
+
+                ups
+            }.await()
+
+            // ── Шаг 3. Fan-out — ПОСЛЕ коммита, только для реальных levelUps ──
+            // При транзакционном подходе levelUps пуст у всех параллельных
+            // вызовов, кроме одного «победителя». Значит fanOut выполнится
+            // ровно один раз на каждый (type, level).
+            if (levelUps.isNotEmpty()) {
+                val actorName = firestore.collection(COLLECTION_USERS)
+                    .document(userId)
+                    .get()
+                    .await()
+                    .getString("name")
+                    .orEmpty()
+                val actorAvatar = firestore.collection(COLLECTION_USERS)
+                    .document(userId)
+                    .get()
+                    .await()
+                    .getString("avatarBase64")
                     .orEmpty()
 
-            val stats = computeStats(userId).getOrThrow()
-            val actorName = userSnap.getString("name").orEmpty()
-            val actorAvatar = userSnap.getString("avatarBase64").orEmpty()
-
-            val levelUps = mutableListOf<Achievement>()
-            val levelsToWrite = mutableMapOf<String, Any>()
-
-            AchievementType.entries.forEach { type ->
-                val value = stats.valueFor(type)
-                val newLevel = AchievementLevels.levelFor(type, value)
-                val oldLevel = (storedLevels[type.name] ?: 0L).toInt()
-                if (newLevel > oldLevel) {
-                    val achievement = Achievement(
-                        type = type,
-                        level = newLevel,
-                        currentValue = value,
-                        nextThreshold = AchievementLevels.nextThreshold(type, newLevel),
-                        levelName = AchievementLevels.levelName(type, newLevel),
-                        description = AchievementLevels.descriptions[type] ?: "",
-                        iconKey = AchievementLevels.icons[type] ?: "code"
-                    )
-                    levelUps += achievement
-                    levelsToWrite[type.name] = newLevel
-
+                levelUps.forEach { achievement ->
                     feedWriter.fanOut(
                         actorUid = userId,
-                        sourceId = "${type.name}_$newLevel",
+                        sourceId = "${achievement.type.name}_${achievement.level}",
                         type = FeedItemType.ACHIEVEMENT_UNLOCKED,
                         payload = FeedWriter.FeedPayload(
                             actorName = actorName,
                             actorAvatarBase64 = actorAvatar,
-                            achievementType = type.name,
-                            achievementLevel = newLevel
+                            achievementType = achievement.type.name,
+                            achievementLevel = achievement.level
                         ),
                         extraOwnerUid = userId
                     )
                 }
-            }
-
-            if (levelsToWrite.isNotEmpty()) {
-                userRef.set(
-                    mapOf("achievementLevels" to levelsToWrite),
-                    SetOptions.merge()
-                ).await()
             }
 
             levelUps

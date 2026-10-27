@@ -12,7 +12,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.stateIn
@@ -118,8 +119,13 @@ class ArrayPickerViewModel @Inject constructor(
             _error.value = null
 
             runCatchingCancellable {
-                val uid = authRepository.authState.firstOrNull()?.uid
-                    ?: throw IllegalStateException("Не авторизован")
+                // ВАЖНО: filterNotNull().first() — ждём реальный uid,
+                // а не первый null из authState при инициализации Firebase.
+                val uid = authRepository.authState
+                    .filterNotNull()
+                    .first()
+                    .uid
+
                 val collection = UserCollection(
                     userId = uid,
                     name = name,

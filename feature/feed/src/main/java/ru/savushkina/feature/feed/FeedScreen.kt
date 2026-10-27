@@ -22,6 +22,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ru.savushkina.core.designsystem.component.*
@@ -30,6 +31,13 @@ import ru.savushkina.core.designsystem.theme.CodeboxTheme
 import ru.savushkina.core.designsystem.theme.Spacing
 import ru.savushkina.core.model.Item
 import ru.savushkina.feature.suggestion.SuggestionDialog
+
+/**
+ * Отступ снизу для последнего элемента LazyColumn, чтобы FAB (56dp)
+ * с отступом Spacing.lg (16dp) и небольшим запасом не перекрывал контент.
+ * 56 + 16 + 16 = 88dp.
+ */
+private val FAB_CLEARANCE = 88.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -171,7 +179,9 @@ private fun FeedList(
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = Spacing.lg),
+        // ВАЖНО: bottom = FAB_CLEARANCE (88dp), чтобы FAB не перекрывал
+        // последний элемент и кнопку «повторить» при ошибке loadMore.
+        contentPadding = PaddingValues(bottom = FAB_CLEARANCE),
         verticalArrangement = Arrangement.spacedBy(Spacing.sm)
     ) {
         items(state.items, key = { it.id }) { item ->

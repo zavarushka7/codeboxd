@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -33,8 +32,15 @@ import ru.savushkina.core.designsystem.theme.Spacing
 /**
  * Базовый skeleton-блок с пульсацией.
  *
- * ВАЖНО: всегда fillMaxWidth, а `width` — это ограничение СВЕРХУ
- * (widthIn(max = width)), а не фиксированная ширина.
+ * ВАЖНО (про `width`):
+ * - `width == null`  → Skeleton растягивается на всю ширину родителя.
+ * - `width != null`  → Skeleton ровно `width` шириной (не больше и не меньше).
+ *
+ * Раньше использовалось `fillMaxWidth().widthIn(max = width)`, но это НЕ работало:
+ * `fillMaxWidth` задаёт `minWidth = maxWidth = parentWidth`, а `widthIn(max = width)`
+ * пытается сузить `maxWidth` при уже установленном `minWidth = parentWidth`.
+ * В Compose при конфликте `minWidth > maxWidth` ограничение игнорируется —
+ * Skeleton всегда был во всю ширину. Заменили на `Modifier.width(width)`.
  */
 @Composable
 fun Skeleton(
@@ -54,10 +60,15 @@ fun Skeleton(
         label = "skeleton_alpha"
     )
 
+    val sizeModifier: Modifier = if (width != null) {
+        Modifier.width(width)
+    } else {
+        Modifier.fillMaxWidth()
+    }
+
     Box(
         modifier = modifier
-            .fillMaxWidth()
-            .then(if (width != null) Modifier.widthIn(max = width) else Modifier)
+            .then(sizeModifier)
             .height(height)
             .clip(RoundedCornerShape(cornerRadius))
             .alpha(alpha)

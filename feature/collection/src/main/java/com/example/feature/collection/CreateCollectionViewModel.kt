@@ -5,7 +5,8 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import ru.savushkina.core.common.runCatchingCancellable
@@ -63,8 +64,13 @@ class CreateCollectionViewModel @Inject constructor(
             _state.update { it.copy(isLoading = true, error = null) }
 
             runCatchingCancellable {
-                val uid = authRepository.authState.firstOrNull()?.uid
-                    ?: throw IllegalStateException("Не авторизован")
+                // ВАЖНО: filterNotNull().first() — ждём реальный uid,
+                // а не первый null из authState при инициализации Firebase.
+                val uid = authRepository.authState
+                    .filterNotNull()
+                    .first()
+                    .uid
+
                 val collection = UserCollection(
                     userId = uid,
                     name = s.name.trim(),

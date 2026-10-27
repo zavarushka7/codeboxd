@@ -56,7 +56,17 @@ class ProfileViewModel @Inject constructor(
     private val followRepository: FollowRepository
 ) : ViewModel() {
 
-    private val targetUserId: String? = Routes.decode(savedStateHandle.get<String>("userId"))
+    /**
+     * UID профиля, который открыт: null — свой профиль, non-null — чужой.
+     *
+     * ВАЖНО: это единственный источник истины для «чьих» коллекций / отзывов
+     * и любых переходов из профиля. Брать uid из `state.user.uid` нельзя:
+     * state может быть Loading (uid ещё не пришёл), а навигация должна идти
+     * на правильный профиль. Плюс `getUser(targetUserId)` может вернуть
+     * документ с другим uid (кэш/ошибка), и тогда навигация уйдёт не туда.
+     */
+    val targetUserId: String? = Routes
+        .decode(savedStateHandle.get<String>("userId"))
         .takeIf { it.isNotBlank() }
 
     val currentUserId: StateFlow<String?> = sessionRepository.sessionState
@@ -91,15 +101,12 @@ class ProfileViewModel @Inject constructor(
 
     private val _refreshTrigger = MutableStateFlow(0)
 
-    // ── Подписки ──
-
     private val _followersCount = MutableStateFlow(0)
     val followersCount = _followersCount.asStateFlow()
 
     private val _followingCount = MutableStateFlow(0)
     val followingCount = _followingCount.asStateFlow()
 
-    /** true, если текущий пользователь подписан на target (в чужом профиле). */
     val isFollowing: StateFlow<Boolean> = combine(
         currentUserId,
         _refreshTrigger
@@ -153,6 +160,9 @@ class ProfileViewModel @Inject constructor(
                     }
                 }
             } else {
+                // ВАЖНО: currentUserId.filterNotNull().first() — ждём реальный uid.
+                // Если пользователь не залогинен, экран не должен открыться
+                // (навигация уводит на AUTH), но на всякий случай — не зависаем.
                 val current = currentUserId.filterNotNull().first()
                 val isOwn = targetUserId == current
                 val user = runCatchingCancellable {
@@ -201,14 +211,6 @@ class ProfileViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Счётчики подписок.
-     *
-     * ВАЖНО:
-     * - в своём профиле (targetUserId == null) — обновляются в реальном времени
-     *   через observeFollowers/observeFollowing (Flow);
-     * - в чужом профиле — один раз через getFollowCounts (count() не слушает).
-     */
     private fun observeFollowCounts() {
         viewModelScope.launch {
             _refreshTrigger
@@ -218,7 +220,6 @@ class ProfileViewModel @Inject constructor(
                     when {
                         profileUid == null -> flowOf(FollowCounts())
                         targetUserId == null -> {
-                            // Свой профиль — live-подписка на оба счётчика.
                             combine(
                                 followRepository.observeFollowers(profileUid)
                                     .map { it.size }
@@ -231,7 +232,6 @@ class ProfileViewModel @Inject constructor(
                             }
                         }
                         else -> {
-                            // Чужой профиль — один раз, без live-подписки.
                             val result: Result<Pair<Int, Int>> = runCatching {
                                 followRepository.getFollowCounts(profileUid)
                             }.getOrElse { Result.failure(it) }
@@ -274,7 +274,6 @@ class ProfileViewModel @Inject constructor(
                         _error.value = it.message ?: "Не удалось подписаться"
                     }
                 }
-                // Обновляем счётчики после действия.
                 followRepository.getFollowCounts(target).onSuccess { counts ->
                     _followersCount.value = counts.first
                     _followingCount.value = counts.second

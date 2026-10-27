@@ -13,7 +13,8 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.stateIn
@@ -45,7 +46,6 @@ class FavouritePickerViewModel @Inject constructor(
 
     private val _selectedIds = MutableStateFlow<Set<String>>(emptySet())
 
-    /** Ошибка загрузки списка избранного (не блокирует работу). */
     private val _favouritesLoadError = MutableStateFlow<String?>(null)
     val favouritesLoadError: StateFlow<String?> = _favouritesLoadError.asStateFlow()
 
@@ -85,14 +85,16 @@ class FavouritePickerViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            val uid = authRepository.authState.firstOrNull()?.uid
-            if (uid == null) {
-                _favouritesLoadError.value = "Не авторизован"
-                return@launch
-            }
+            // ВАЖНО: authState.first() без filterNotNull может вернуть null
+            // при инициализации Firebase — пользователь увидит «Не авторизован»,
+            // хотя залогинен. Ждём первое не-null значение.
+            val uid = authRepository.authState
+                .filterNotNull()
+                .first()
+                .uid
+
             favouriteRepository.observeFavourites(uid)
                 .catch { e ->
-                    // Не роняем экран — показываем ошибку отдельно.
                     _favouritesLoadError.value =
                         e.message ?: "Не удалось загрузить избранное"
                 }

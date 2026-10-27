@@ -6,7 +6,8 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import ru.savushkina.core.common.runCatchingCancellable
 import ru.savushkina.core.domain.AuthRepository
@@ -62,14 +63,19 @@ class ReviewViewModel @Inject constructor(
 
     private fun load() {
         viewModelScope.launch {
-            currentUserId = authRepository.authState.firstOrNull()?.uid
+            // ВАЖНО: authState.first() без filterNotNull может вернуть null
+            // при инициализации Firebase (до восстановления сессии),
+            // даже если пользователь залогинен. Ждём первое не-null значение.
+            currentUserId = authRepository.authState
+                .filterNotNull()
+                .first()
+                .uid
+
             runCatchingCancellable {
                 val item = itemRepository.getItemById(itemId)
                 val existing = currentUserId?.let { reviewRepository.getReview(it, itemId) }
                 item to existing
             }.onSuccess { (item, existing) ->
-                // Если в SavedStateHandle уже есть черновик (rating/comment),
-                // не перезатираем его данными из существующего отзыва.
                 val hasDraftRating = savedStateHandle.contains(KEY_RATING)
                 val hasDraftComment = savedStateHandle.contains(KEY_COMMENT)
                 _state.value = _state.value.copy(
@@ -80,7 +86,6 @@ class ReviewViewModel @Inject constructor(
                     else existing?.comment ?: "",
                     isLoading = false
                 )
-                // Если черновика не было, а отзыв существовал — сохраняем как стартовый.
                 if (!hasDraftRating && existing != null) {
                     savedStateHandle[KEY_RATING] = existing.rating
                 }
@@ -145,7 +150,6 @@ class ReviewViewModel @Inject constructor(
                 )
             )
                 .onSuccess {
-                    // Черновик больше не нужен — очищаем.
                     savedStateHandle.remove<Int>(KEY_RATING)
                     savedStateHandle.remove<String>(KEY_COMMENT)
                     _state.value = _state.value.copy(
