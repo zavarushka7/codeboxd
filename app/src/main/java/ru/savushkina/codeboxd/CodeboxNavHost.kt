@@ -53,6 +53,7 @@ import ru.savushkina.feature.profile.FollowListScreen
 import ru.savushkina.feature.profile.ProfileScreen
 import ru.savushkina.feature.profile.ProfileUiState
 import ru.savushkina.feature.profile.ProfileViewModel
+import ru.savushkina.feature.profile.ReviewListScreen
 import ru.savushkina.feature.review.ReviewDetailScreen
 import ru.savushkina.feature.review.ReviewReactionsScreen
 import ru.savushkina.feature.review.ReviewScreen
@@ -63,10 +64,18 @@ fun CodeboxNavHost(
     navController: NavHostController,
     sessionViewModel: SessionViewModel = hiltViewModel()
 ) {
+    /**
+     * SessionViewModel отдает 4 стрима:
+     * navTarget - куда идти (AUTH, ONBOARDING, FEED или null - остаться на сплэше)
+     * currentUserId - uid залогиненного пользователя
+     * canRetry - показывать ли кнопку повторить на сплэше
+     * retrying - идет ли сейчас повторная загрузка профиля
+     */
     val navTarget by sessionViewModel.navTarget.collectAsStateWithLifecycle()
     val currentUserId by sessionViewModel.currentUserId.collectAsStateWithLifecycle()
     val canRetry by sessionViewModel.canRetry.collectAsStateWithLifecycle()
     val retrying by sessionViewModel.retrying.collectAsStateWithLifecycle()
+
 
     val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
         ?: Routes.SPLASH
@@ -311,9 +320,6 @@ fun CodeboxNavHost(
                 ProfileScreen(
                     onBack = { navController.popBackStack() },
                     onSettingsClick = { navController.navigate(Routes.SETTINGS) },
-                    onReviewClick = { reviewId ->
-                        navController.navigate(Routes.reviewDetail(reviewId))
-                    },
                     onAddFavouriteClick = { navController.navigate(Routes.FAVOURITE_PICKER) },
                     onCollectionsClick = { userId ->
                         navController.navigate(Routes.collections(userId))
@@ -326,6 +332,9 @@ fun CodeboxNavHost(
                     },
                     onAchievementsClick = {
                         navController.navigate(Routes.achievements(null))
+                    },
+                    onReviewClick = { userId ->
+                        navController.navigate(Routes.reviews(userId))
                     },
                     viewModel = profileViewModel
                 )
@@ -342,9 +351,6 @@ fun CodeboxNavHost(
                 ProfileScreen(
                     onBack = { navController.popBackStack() },
                     onSettingsClick = {},
-                    onReviewClick = { reviewId ->
-                        navController.navigate(Routes.reviewDetail(reviewId))
-                    },
                     onAddFavouriteClick = {},
                     onCollectionsClick = { userId ->
                         navController.navigate(Routes.collections(userId))
@@ -364,7 +370,34 @@ fun CodeboxNavHost(
                             ?: targetUserId
                         navController.navigate(Routes.achievements(uid))
                     },
+                    onReviewClick = { userId ->
+                        navController.navigate(Routes.reviews(userId))
+                    },
                     viewModel = profileViewModel
+                )
+            }
+
+            // Экран отзывов пользователя.
+            // userId опционален: если не пришёл — показываем отзывы текущего пользователя.
+            composable(
+                route = Routes.REVIEWS,
+                arguments = listOf(
+                    navArgument("userId") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    }
+                )
+            ) {
+                ReviewListScreen(
+                    onBack = { navController.popBackStack() },
+                    onReviewClick = { reviewId ->
+                        navController.navigate(Routes.reviewDetail(reviewId))
+                    },
+                    onAuthorClick = { userId ->
+                        navController.openUserProfile(userId, currentUserId)
+                    },
+                    currentUserId = currentUserId
                 )
             }
 

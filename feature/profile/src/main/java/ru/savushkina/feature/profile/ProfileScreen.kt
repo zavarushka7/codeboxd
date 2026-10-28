@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -34,8 +33,6 @@ import ru.savushkina.core.designsystem.component.FavouriteFourSection
 import ru.savushkina.core.designsystem.component.HorizontalLine
 import ru.savushkina.core.designsystem.component.KeyValueRow
 import ru.savushkina.core.designsystem.component.LabelText
-import ru.savushkina.core.designsystem.component.ReviewRow
-import ru.savushkina.core.designsystem.component.SectionHeader
 import ru.savushkina.core.designsystem.component.SkeletonProfileHeader
 import ru.savushkina.core.designsystem.component.SkeletonReviewRow
 import ru.savushkina.core.designsystem.component.WireAvatar
@@ -46,26 +43,23 @@ import ru.savushkina.core.designsystem.pattern.TerminalTopBar
 import ru.savushkina.core.designsystem.theme.Sizes
 import ru.savushkina.core.designsystem.theme.Spacing
 import ru.savushkina.core.model.Item
-import ru.savushkina.core.model.Review
 import ru.savushkina.core.model.Role
 import ru.savushkina.core.model.User
 import ru.savushkina.core.navigation.FollowListMode
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(
     onBack: () -> Unit,
     onSettingsClick: () -> Unit,
-    onReviewClick: (reviewId: String) -> Unit,
     onAddFavouriteClick: (slotIndex: Int) -> Unit,
     onCollectionsClick: (userId: String?) -> Unit,
     onFollowersClick: () -> Unit,
     onFollowingClick: () -> Unit,
     onAchievementsClick: () -> Unit,
+    onReviewClick: (userId: String?) -> Unit,
     viewModel: ProfileViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val reviews by viewModel.reviews.collectAsStateWithLifecycle()
     val favourites by viewModel.favourites.collectAsStateWithLifecycle()
     val isOwnProfile by viewModel.isOwnProfile.collectAsStateWithLifecycle()
     val currentUserId by viewModel.currentUserId.collectAsStateWithLifecycle()
@@ -76,16 +70,13 @@ fun ProfileScreen(
     val isFollowing by viewModel.isFollowing.collectAsStateWithLifecycle()
     val followActionLoading by viewModel.followActionLoading.collectAsStateWithLifecycle()
 
-    // ВАЖНО: uid для навигации берём из route (viewModel.targetUserId),
-    // а не из state.user.uid. state может быть Loading (uid ещё не пришёл),
-    // а навигация должна вести на правильный профиль. И getUser(targetUserId)
-    // может вернуть документ с другим uid (кэш/ошибка) — тогда бы мы ушли
-    // не в тот профиль.
+    // uid для навигации берём из route (viewModel.targetUserId),
+    // а не из state.user.uid: state может быть Loading, а навигация
+    // должна вести на правильный профиль.
     val collectionsOwnerUid: String? = if (isOwnProfile) null else viewModel.targetUserId
 
     ProfileContent(
         state = state,
-        reviews = reviews,
         favourites = favourites,
         isOwnProfile = isOwnProfile,
         currentUserId = currentUserId,
@@ -98,14 +89,14 @@ fun ProfileScreen(
         onRefresh = viewModel::refresh,
         onBack = onBack,
         onSettingsClick = onSettingsClick,
-        onReviewClick = onReviewClick,
         onAddFavouriteClick = onAddFavouriteClick,
         onRemoveFavourite = viewModel::removeFavourite,
         onCollectionsClick = { onCollectionsClick(collectionsOwnerUid) },
         onFollowersClick = onFollowersClick,
         onFollowingClick = onFollowingClick,
         onToggleFollow = viewModel::toggleFollow,
-        onAchievementsClick = onAchievementsClick
+        onAchievementsClick = onAchievementsClick,
+        onReviewClick = { onReviewClick(collectionsOwnerUid) }
     )
 }
 
@@ -113,7 +104,6 @@ fun ProfileScreen(
 @Composable
 fun ProfileContent(
     state: ProfileUiState,
-    reviews: List<Review> = emptyList(),
     favourites: List<Item> = emptyList(),
     isOwnProfile: Boolean = true,
     currentUserId: String? = null,
@@ -126,14 +116,14 @@ fun ProfileContent(
     onRefresh: () -> Unit = {},
     onBack: () -> Unit = {},
     onSettingsClick: () -> Unit = {},
-    onReviewClick: (reviewId: String) -> Unit = {},
     onAddFavouriteClick: (slotIndex: Int) -> Unit = {},
     onRemoveFavourite: (String) -> Unit = {},
     onCollectionsClick: () -> Unit = {},
     onFollowersClick: () -> Unit = {},
     onFollowingClick: () -> Unit = {},
     onToggleFollow: () -> Unit = {},
-    onAchievementsClick: () -> Unit = {}
+    onAchievementsClick: () -> Unit = {},
+    onReviewClick: () -> Unit = {}
 ) {
     TerminalScreen {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -194,7 +184,6 @@ fun ProfileContent(
                     ) {
                         ProfileBody(
                             user = state.user,
-                            reviews = reviews,
                             favourites = favourites,
                             isOwnProfile = isOwnProfile,
                             currentUserId = currentUserId,
@@ -202,14 +191,14 @@ fun ProfileContent(
                             followingCount = followingCount,
                             isFollowing = isFollowing,
                             followActionLoading = followActionLoading,
-                            onReviewClick = onReviewClick,
                             onAddFavouriteClick = onAddFavouriteClick,
                             onRemoveFavourite = onRemoveFavourite,
                             onCollectionsClick = onCollectionsClick,
                             onFollowersClick = onFollowersClick,
                             onFollowingClick = onFollowingClick,
                             onToggleFollow = onToggleFollow,
-                            onAchievementsClick = onAchievementsClick
+                            onAchievementsClick = onAchievementsClick,
+                            onReviewClick = onReviewClick
                         )
                     }
                 }
@@ -221,7 +210,6 @@ fun ProfileContent(
 @Composable
 private fun ProfileBody(
     user: User,
-    reviews: List<Review>,
     favourites: List<Item>,
     isOwnProfile: Boolean,
     currentUserId: String?,
@@ -229,14 +217,14 @@ private fun ProfileBody(
     followingCount: Int,
     isFollowing: Boolean,
     followActionLoading: Boolean,
-    onReviewClick: (reviewId: String) -> Unit,
     onAddFavouriteClick: (slotIndex: Int) -> Unit,
     onRemoveFavourite: (String) -> Unit,
     onCollectionsClick: () -> Unit,
     onFollowersClick: () -> Unit,
     onFollowingClick: () -> Unit,
     onToggleFollow: () -> Unit,
-    onAchievementsClick: () -> Unit
+    onAchievementsClick: () -> Unit,
+    onReviewClick: () -> Unit
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -329,27 +317,8 @@ private fun ProfileBody(
                 WireButton(text = "коллекции", onClick = onCollectionsClick)
                 Spacer(Modifier.height(Spacing.sm))
                 WireButton(text = "награды", onClick = onAchievementsClick)
-            }
-        }
-
-        item(key = "reviews_header") {
-            Spacer(Modifier.height(Spacing.xl))
-            SectionHeader(text = if (isOwnProfile) "мои отзывы" else "отзывы")
-        }
-
-        if (reviews.isEmpty()) {
-            item(key = "reviews_empty") {
-                LabelText(text = "// пока нет отзывов")
-            }
-        } else {
-            items(reviews, key = { it.reviewId }) { review ->
-                val isMine = currentUserId != null && review.userId == currentUserId
-                ReviewRow(
-                    review = review,
-                    isMine = isMine,
-                    onCardClick = { onReviewClick(review.reviewId) },
-                    onCommentsClick = { onReviewClick(review.reviewId) }
-                )
+                Spacer(Modifier.height(Spacing.sm))
+                WireButton(text = "отзывы", onClick = onReviewClick)
             }
         }
     }

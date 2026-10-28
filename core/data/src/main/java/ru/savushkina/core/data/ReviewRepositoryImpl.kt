@@ -4,6 +4,7 @@ import com.google.firebase.Timestamp
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldPath
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.MetadataChanges
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.CoroutineScope
@@ -35,23 +36,41 @@ class ReviewRepositoryImpl @Inject constructor(
     private val achievementRepository: AchievementRepository
 ) : ReviewRepository {
 
-    /**
-     * Скоуп для fire-and-forget пересчёта наград. Не привязан к ViewModel,
-     * чтобы пережить уход с экрана.
-     */
     private val backgroundScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     // ── Отзывы ──
 
+    /**
+     * Live-поток отзывов пользователя.
+     *
+     * ВАЖНО: слушаем с MetadataChanges.INCLUDE и НЕ эмитим пустой кэш-снапшот.
+     *
+     * Причина: Firestore при подписке сначала отдаёт локальный кэш. Если в кэше
+     * для этого запроса данных ещё нет, приходит пустой snapshot с
+     * metadata.isFromCache == true. Если его эмитить, UI успевает показать
+     * «// пока нет отзывов», а затем приходит серверный снапшот со списком —
+     * получается визуальное мигание. Поэтому пустые кэш-снапшоты пропускаем,
+     * а пустой серверный — эмитим (это реальный ответ «отзывов нет»).
+     */
     override fun observeReviewsForUser(userId: String): Flow<List<Review>> = callbackFlow {
         val listener = firestore.collection(COLLECTION_REVIEWS)
             .whereEqualTo("userId", userId)
             .orderBy("createdAt", Query.Direction.DESCENDING)
             .limit(REVIEWS_PAGE_LIMIT)
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) { close(error); return@addSnapshotListener }
+            .addSnapshotListener(MetadataChanges.INCLUDE) { snapshot, error ->
+                if (error != null) {
+                    close(error)
+                    return@addSnapshotListener
+                }
                 if (isClosedForSend) return@addSnapshotListener
-                val reviews = snapshot?.documents?.mapNotNull { it.toReviewOrNull() }.orEmpty()
+                if (snapshot == null) return@addSnapshotListener
+
+                val fromCache = snapshot.metadata.isFromCache
+                val reviews = snapshot.documents.mapNotNull { it.toReviewOrNull() }
+
+                // Пропускаем пустой кэш — ждём серверный снапшот.
+                if (fromCache && reviews.isEmpty()) return@addSnapshotListener
+
                 trySend(reviews)
             }
         awaitClose { listener.remove() }
@@ -65,10 +84,18 @@ class ReviewRepositoryImpl @Inject constructor(
             .whereEqualTo("itemId", itemId)
             .orderBy("createdAt", Query.Direction.DESCENDING)
             .limit(limit)
-            .addSnapshotListener { snapshot, error ->
+            .addSnapshotListener(MetadataChanges.INCLUDE) { snapshot, error ->
                 if (error != null) { close(error); return@addSnapshotListener }
                 if (isClosedForSend) return@addSnapshotListener
-                val reviews = snapshot?.documents?.mapNotNull { it.toReviewOrNull() }.orEmpty()
+                if (snapshot == null) return@addSnapshotListener
+
+                val fromCache = snapshot.metadata.isFromCache
+                val reviews = snapshot.documents.mapNotNull { it.toReviewOrNull() }
+
+                // Та же защита: не эмитим пустой кэш, чтобы не мигать
+                // «// пока нет отзывов» → список.
+                if (fromCache && reviews.isEmpty()) return@addSnapshotListener
+
                 trySend(reviews)
             }
         awaitClose { listener.remove() }
@@ -229,7 +256,6 @@ class ReviewRepositoryImpl @Inject constructor(
                 )
             }.await()
 
-            // После удаления отзыва уровень может упасть — пересчитываем.
             backgroundScope.launch {
                 achievementRepository.checkAndNotifyLevelUps(userId)
             }

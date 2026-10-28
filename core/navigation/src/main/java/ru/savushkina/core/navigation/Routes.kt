@@ -42,6 +42,9 @@ object Routes {
     // userId опционально — если не передан, показываем свои награды.
     const val ACHIEVEMENTS = "achievements?userId={userId}"
 
+    // userId опционально — если не передан, показываем свои отзывы.
+    const val REVIEWS = "reviews?userId={userId}"
+
     // ── path args ──
     fun details(itemId: String) = "details/${Uri.encode(itemId)}"
     fun reviewForm(itemId: String) = "review_form/${Uri.encode(itemId)}"
@@ -81,6 +84,10 @@ object Routes {
     fun achievements(userId: String? = null): String =
         if (userId.isNullOrBlank()) "achievements"
         else "achievements?userId=${Uri.encode(userId)}"
+
+    fun reviews(userId: String? = null): String =
+        if (userId.isNullOrBlank()) "reviews"
+        else "reviews?userId=${Uri.encode(userId)}"
 
     // ── декодер ──
     fun decode(raw: String?): String = raw?.let(Uri::decode).orEmpty()
