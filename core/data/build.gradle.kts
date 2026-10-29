@@ -39,4 +39,5 @@ dependencies {
     ksp(libs.hilt.compiler)
 
     implementation(libs.datastore.preferences)
+    implementation("io.github.rroohit:ImageCropView:4.1.0")
 }

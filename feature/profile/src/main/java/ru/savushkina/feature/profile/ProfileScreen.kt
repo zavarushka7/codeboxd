@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Settings
@@ -29,13 +30,13 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ru.savushkina.core.designsystem.component.AlertBox
+import ru.savushkina.core.designsystem.component.AsciiAvatar
 import ru.savushkina.core.designsystem.component.FavouriteFourSection
 import ru.savushkina.core.designsystem.component.HorizontalLine
 import ru.savushkina.core.designsystem.component.KeyValueRow
 import ru.savushkina.core.designsystem.component.LabelText
 import ru.savushkina.core.designsystem.component.SkeletonProfileHeader
 import ru.savushkina.core.designsystem.component.SkeletonReviewRow
-import ru.savushkina.core.designsystem.component.WireAvatar
 import ru.savushkina.core.designsystem.component.WireButton
 import ru.savushkina.core.designsystem.component.WireFrame
 import ru.savushkina.core.designsystem.pattern.TerminalScreen
@@ -70,9 +71,6 @@ fun ProfileScreen(
     val isFollowing by viewModel.isFollowing.collectAsStateWithLifecycle()
     val followActionLoading by viewModel.followActionLoading.collectAsStateWithLifecycle()
 
-    // uid для навигации берём из route (viewModel.targetUserId),
-    // а не из state.user.uid: state может быть Loading, а навигация
-    // должна вести на правильный профиль.
     val collectionsOwnerUid: String? = if (isOwnProfile) null else viewModel.targetUserId
 
     ProfileContent(
@@ -236,71 +234,101 @@ private fun ProfileBody(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = Spacing.lg),
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .padding(vertical = Spacing.lg)
             ) {
-                WireAvatar(
-                    avatarBase64 = user.avatarBase64,
-                    fallbackText = user.initials,
-                    size = 120.dp
-                )
-                Spacer(Modifier.height(Spacing.lg))
-                Text(
-                    text = user.displayName,
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                if (user.handle.isNotBlank()) {
-                    Spacer(Modifier.height(Spacing.xs))
-                    LabelText(
-                        text = user.handle,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                user.role?.let { role ->
-                    if (role != Role.DO_NOT_SPECIFY) {
-                        Spacer(Modifier.height(Spacing.md))
-                        KeyValueRow(key = "role", value = role.displayName, accent = true)
+                // ── Аватарка слева + имя/ник справа ──
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(modifier = Modifier.weight(1.6f)) {
+                        AsciiAvatar(
+                            avatarBase64 = user.avatarBase64,
+                            fallbackText = user.initials,
+                            fillWidth = true,
+                            showFrame = false,
+                            clickable = true,
+                            modifier = Modifier.fillMaxSize()
+                        )
                     }
-                }
-                if (user.description.isNotBlank()) {
-                    Spacer(Modifier.height(Spacing.md))
-                    WireFrame(modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.padding(Spacing.md)) {
-                            LabelText(text = "about")
+
+                    Spacer(Modifier.width(Spacing.md))
+
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        horizontalAlignment = Alignment.Start
+                    ) {
+                        Text(
+                            text = user.displayName,
+                            style = MaterialTheme.typography.headlineSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            textAlign = TextAlign.Start,
+                            maxLines = 2,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        if (user.handle.isNotBlank()) {
                             Spacer(Modifier.height(Spacing.xs))
-                            Text(
-                                text = user.description,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onBackground
+                            LabelText(
+                                text = user.handle,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
                 }
 
-                Spacer(Modifier.height(Spacing.md))
-                FollowStatsRow(
-                    isOwnProfile = isOwnProfile,
-                    followersCount = followersCount,
-                    followingCount = followingCount,
-                    onFollowersClick = onFollowersClick,
-                    onFollowingClick = onFollowingClick
-                )
+                Spacer(Modifier.height(Spacing.lg))
 
-                if (!isOwnProfile && currentUserId != null) {
-                    Spacer(Modifier.height(Spacing.lg))
-                    WireButton(
-                        text = when {
-                            followActionLoading -> "..."
-                            isFollowing -> "отписаться"
-                            else -> "подписаться"
-                        },
-                        onClick = onToggleFollow,
-                        accent = !isFollowing,
-                        enabled = !followActionLoading
+                // ── Остальное по центру, как раньше ──
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    user.role?.let { role ->
+                        if (role != Role.DO_NOT_SPECIFY) {
+                            KeyValueRow(
+                                key = "роль",
+                                value = role.displayName,
+                                accent = true
+                            )
+                            Spacer(Modifier.height(Spacing.md))
+                        }
+                    }
+                    if (user.description.isNotBlank()) {
+                        WireFrame(modifier = Modifier.fillMaxWidth()) {
+                            Column(modifier = Modifier.padding(Spacing.md)) {
+                                LabelText(text = "about")
+                                Spacer(Modifier.height(Spacing.xs))
+                                Text(
+                                    text = user.description,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onBackground
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(Spacing.md))
+                    }
+
+                    FollowStatsRow(
+                        isOwnProfile = isOwnProfile,
+                        followersCount = followersCount,
+                        followingCount = followingCount,
+                        onFollowersClick = onFollowersClick,
+                        onFollowingClick = onFollowingClick
                     )
+
+                    if (!isOwnProfile && currentUserId != null) {
+                        Spacer(Modifier.height(Spacing.lg))
+                        WireButton(
+                            text = when {
+                                followActionLoading -> "..."
+                                isFollowing -> "отписаться"
+                                else -> "подписаться"
+                            },
+                            onClick = onToggleFollow,
+                            accent = !isFollowing,
+                            enabled = !followActionLoading
+                        )
+                    }
                 }
             }
         }

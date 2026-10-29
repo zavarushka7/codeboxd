@@ -133,10 +133,10 @@ class SettingsViewModel @Inject constructor(
         _error.value = null
     }
 
-    fun onAvatarSelected(uri: Uri) {
+    fun onAvatarSelected(bitmap: android.graphics.Bitmap) {
         viewModelScope.launch {
             _error.value = null
-            when (val result = avatarEncoder.encode(uri)) {
+            when (val result = avatarEncoder.encodeBitmap(bitmap)) {
                 is AvatarEncodeResult.Failure -> _error.value = result.reason
                 is AvatarEncodeResult.TooLarge -> _error.value =
                     "Изображение слишком большое (${result.base64Length / 1024} KB > " +
@@ -147,7 +147,6 @@ class SettingsViewModel @Inject constructor(
             }
         }
     }
-
     fun signOut() = sessionRepository.signOut()
 
     fun save(onSuccess: () -> Unit) {

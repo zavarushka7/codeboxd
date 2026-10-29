@@ -27,4 +27,5 @@ dependencies {
     implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.androidx.ui.tooling.preview)
     debugImplementation(libs.androidx.ui.tooling)
+    implementation("io.github.rroohit:ImageCropView:4.1.0")
 }

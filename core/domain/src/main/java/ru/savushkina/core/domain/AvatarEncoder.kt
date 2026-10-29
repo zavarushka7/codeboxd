@@ -1,5 +1,6 @@
 package ru.savushkina.core.domain
 
+import android.graphics.Bitmap
 import android.net.Uri
 
 sealed interface AvatarEncodeResult {
@@ -9,9 +10,17 @@ sealed interface AvatarEncodeResult {
 }
 
 interface AvatarEncoder {
-    /**
-     * Кодирует изображение из [uri] в base64 (JPEG, scaled to 128x128).
-     * Возвращает [AvatarEncodeResult] — success, too_large или failure.
-     */
     suspend fun encode(uri: Uri): AvatarEncodeResult
+
+    /** Новый путь: готовый квадратный Bitmap из ImageCropView. */
+    suspend fun encodeBitmap(bitmap: Bitmap): AvatarEncodeResult
+
+    @Deprecated("Use encodeBitmap(bitmap) with ImageCropView")
+    suspend fun encodeCropped(
+        uri: Uri,
+        left: Float,
+        top: Float,
+        right: Float,
+        bottom: Float
+    ): AvatarEncodeResult = encode(uri)
 }

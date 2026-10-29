@@ -15,6 +15,7 @@ import ru.savushkina.core.model.UserConstraints
 import java.io.ByteArrayOutputStream
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.math.min
 
 @Singleton
 class AvatarEncoderImpl @Inject constructor(
@@ -22,31 +23,46 @@ class AvatarEncoderImpl @Inject constructor(
 ) : AvatarEncoder {
 
     override suspend fun encode(uri: Uri): AvatarEncodeResult =
-        withContext(Dispatchers.IO) { encodeInternal(uri) }
+        withContext(Dispatchers.IO) {
+            // Старое поведение: читаем файл и берём центральный квадрат.
+            val bytes = try {
+                context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                    ?: return@withContext AvatarEncodeResult.Failure("Не удалось прочитать изображение")
+            } catch (e: Exception) {
+                Log.e(TAG, "encode: read failed", e)
+                return@withContext AvatarEncodeResult.Failure("Не удалось прочитать изображение")
+            }
 
-    private fun encodeInternal(uri: Uri): AvatarEncodeResult {
-        val bytes: ByteArray = try {
-            context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                ?: return AvatarEncodeResult.Failure("Не удалось прочитать изображение")
-        } catch (e: Exception) {
-            Log.e(TAG, "encode: read failed", e)
-            return AvatarEncodeResult.Failure("Не удалось прочитать изображение")
+            if (bytes.isEmpty()) return@withContext AvatarEncodeResult.Failure("Файл пустой")
+
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+                return@withContext AvatarEncodeResult.Failure("Формат изображения не поддерживается")
+            }
+
+            val sample = calculateInSampleSize(bounds.outWidth, bounds.outHeight, TARGET_PX)
+            val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+            val source = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
+                ?: return@withContext AvatarEncodeResult.Failure("Не удалось декодировать изображение")
+
+            val side = min(source.width, source.height)
+            val left = (source.width - side) / 2
+            val top = (source.height - side) / 2
+            val cropped = Bitmap.createBitmap(source, left, top, side, side)
+            if (cropped !== source) source.recycle()
+
+            encodeBitmapInternal(cropped)
         }
 
-        if (bytes.isEmpty()) return AvatarEncodeResult.Failure("Файл пустой")
+    /**
+     * Новый путь: на вход приходит уже вырезанный квадратный Bitmap
+     * (из ImageCropView.onCrop()).
+     */
+    override suspend fun encodeBitmap(bitmap: Bitmap): AvatarEncodeResult =
+        withContext(Dispatchers.IO) { encodeBitmapInternal(bitmap) }
 
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-
-        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
-            return AvatarEncodeResult.Failure("Формат изображения не поддерживается")
-        }
-
-        val sample = calculateInSampleSize(bounds.outWidth, bounds.outHeight, TARGET_PX)
-        val opts = BitmapFactory.Options().apply { inSampleSize = sample }
-        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
-            ?: return AvatarEncodeResult.Failure("Не удалось декодировать изображение")
-
+    private fun encodeBitmapInternal(bitmap: Bitmap): AvatarEncodeResult {
         val scaled: Bitmap = try {
             if (bitmap.width != TARGET_PX || bitmap.height != TARGET_PX) {
                 Bitmap.createScaledBitmap(bitmap, TARGET_PX, TARGET_PX, true)
@@ -55,7 +71,7 @@ class AvatarEncoderImpl @Inject constructor(
                 bitmap
             }
         } catch (e: OutOfMemoryError) {
-            Log.e(TAG, "encode: OOM", e)
+            Log.e(TAG, "encodeBitmap: OOM", e)
             bitmap.recycle()
             return AvatarEncodeResult.Failure("Недостаточно памяти для обработки изображения")
         }

@@ -64,18 +64,10 @@ fun CodeboxNavHost(
     navController: NavHostController,
     sessionViewModel: SessionViewModel = hiltViewModel()
 ) {
-    /**
-     * SessionViewModel отдает 4 стрима:
-     * navTarget - куда идти (AUTH, ONBOARDING, FEED или null - остаться на сплэше)
-     * currentUserId - uid залогиненного пользователя
-     * canRetry - показывать ли кнопку повторить на сплэше
-     * retrying - идет ли сейчас повторная загрузка профиля
-     */
     val navTarget by sessionViewModel.navTarget.collectAsStateWithLifecycle()
     val currentUserId by sessionViewModel.currentUserId.collectAsStateWithLifecycle()
     val canRetry by sessionViewModel.canRetry.collectAsStateWithLifecycle()
     val retrying by sessionViewModel.retrying.collectAsStateWithLifecycle()
-
 
     val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
         ?: Routes.SPLASH
@@ -111,10 +103,18 @@ fun CodeboxNavHost(
         }
     }
 
-    val bottomBarRoutes = setOf(
-        Routes.FEED, Routes.SEARCH, Routes.ACTIVITY, Routes.PROFILE
+    // Экраны, где нижнюю панель показывать НЕ нужно.
+    // Всё остальное — с панелью.
+    val hiddenBottomBarRoutes = setOf(
+        Routes.SPLASH,
+        Routes.AUTH,
+        Routes.ONBOARDING,
+        Routes.SETTINGS
     )
-    val showBottomBar = currentRoute in bottomBarRoutes
+    val showBottomBar = currentRoute !in hiddenBottomBarRoutes
+
+    // Подсветка активного таба — только когда открыт сам таб.
+    // На вложенных экранах панель есть, но без подсветки.
     val selectedTab = when (currentRoute) {
         Routes.FEED -> BottomTab.FEED
         Routes.SEARCH -> BottomTab.SEARCH
@@ -377,8 +377,6 @@ fun CodeboxNavHost(
                 )
             }
 
-            // Экран отзывов пользователя.
-            // userId опционален: если не пришёл — показываем отзывы текущего пользователя.
             composable(
                 route = Routes.REVIEWS,
                 arguments = listOf(

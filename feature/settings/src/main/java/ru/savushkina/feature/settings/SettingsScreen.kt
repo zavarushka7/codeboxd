@@ -1,5 +1,6 @@
 package ru.savushkina.feature.settings
 
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -30,6 +31,8 @@ import androidx.compose.ui.window.Dialog
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ru.savushkina.core.designsystem.component.AlertBox
+import ru.savushkina.core.designsystem.component.AsciiAvatar
+import ru.savushkina.core.designsystem.component.AvatarCropper
 import ru.savushkina.core.designsystem.component.BlinkingCursor
 import ru.savushkina.core.designsystem.component.HorizontalLine
 import ru.savushkina.core.designsystem.component.LabelText
@@ -62,12 +65,25 @@ fun SettingsScreen(
 
     var confirmSignOut by remember { mutableStateOf(false) }
 
+    var pendingAvatarUri by remember { mutableStateOf<Uri?>(null) }
+
     val imagePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
-        uri?.let { viewModel.onAvatarSelected(it) }
+        uri?.let { pendingAvatarUri = it }
     }
 
+// Показ кроппера, когда выбрано изображение
+    pendingAvatarUri?.let { uri ->
+        AvatarCropper(
+            uri = uri,
+            onDismiss = { pendingAvatarUri = null },
+            onResult = { bitmap ->
+                viewModel.onAvatarSelected(bitmap)
+                pendingAvatarUri = null
+            }
+        )
+    }
     SettingsContent(
         state = state,
         draft = draft,
@@ -246,10 +262,11 @@ private fun SettingsForm(
                 .padding(vertical = Spacing.lg),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            WireAvatar(
+            AsciiAvatar(
                 avatarBase64 = user.avatarBase64,
                 fallbackText = user.initials,
-                size = 120.dp
+                size = 120.dp,
+                clickable = true
             )
             Spacer(Modifier.height(Spacing.sm))
             LabelText(

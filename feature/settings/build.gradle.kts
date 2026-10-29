@@ -39,4 +39,5 @@ dependencies {
     debugImplementation(libs.androidx.ui.tooling)
     ksp(libs.hilt.compiler)
     implementation(libs.hilt.navigation.compose)
+    implementation("io.github.rroohit:ImageCropView:4.1.0")
 }

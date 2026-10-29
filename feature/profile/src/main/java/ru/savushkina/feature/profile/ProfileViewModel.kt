@@ -58,12 +58,6 @@ class ProfileViewModel @Inject constructor(
 
     /**
      * UID профиля, который открыт: null — свой профиль, non-null — чужой.
-     *
-     * ВАЖНО: это единственный источник истины для «чьих» коллекций / отзывов
-     * и любых переходов из профиля. Брать uid из `state.user.uid` нельзя:
-     * state может быть Loading (uid ещё не пришёл), а навигация должна идти
-     * на правильный профиль. Плюс `getUser(targetUserId)` может вернуть
-     * документ с другим uid (кэш/ошибка), и тогда навигация уйдёт не туда.
      */
     val targetUserId: String? = Routes
         .decode(savedStateHandle.get<String>("userId"))
@@ -131,18 +125,46 @@ class ProfileViewModel @Inject constructor(
         observeFollowCounts()
     }
 
+    /**
+     * Pull-to-refresh.
+     *
+     * ВАЖНО:
+     *  - `_refreshTrigger.value++` ДО `try`, чтобы даже при ошибке перечитать
+     *    отзывы/избранное/подписки.
+     *  - Для своего профиля явно вызываем `userRepository.refresh(uid)` —
+     *    иначе `currentUser` может не эмитить новое значение (данные не
+     *    изменились / кэш), и UI не обновится.
+     *  - Для чужого профиля перечитываем `getUser(targetUserId)`.
+     *  - `_isRefreshing` всегда сбрасывается в `finally` — индикатор не зависнет.
+     */
     fun refresh() {
         if (_isRefreshing.value) return
         viewModelScope.launch {
             _isRefreshing.value = true
+            // Форсим пересчёт отзывов/избранного/подписок.
+            _refreshTrigger.value += 1
             try {
-                if (targetUserId != null) {
-                    val user = runCatching { userRepository.getUser(targetUserId) }.getOrNull()
+                val target = targetUserId
+                if (target == null) {
+                    // Свой профиль: обновляем из Firestore.
+                    val uid = currentUserId.value
+                    if (uid != null) {
+                        userRepository.refresh(uid)
+                            .onSuccess { user ->
+                                _uiState.value = ProfileUiState.Success(user)
+                            }
+                            .onFailure { e ->
+                                _error.value = e.message ?: "Не удалось обновить профиль"
+                            }
+                    }
+                } else {
+                    // Чужой профиль: перечитываем документ.
+                    val user = runCatching { userRepository.getUser(target) }
+                        .getOrNull()
                     if (user != null) {
                         _uiState.value = ProfileUiState.Success(user)
                     }
                 }
-                _refreshTrigger.value++
             } finally {
                 _isRefreshing.value = false
             }
@@ -160,9 +182,6 @@ class ProfileViewModel @Inject constructor(
                     }
                 }
             } else {
-                // ВАЖНО: currentUserId.filterNotNull().first() — ждём реальный uid.
-                // Если пользователь не залогинен, экран не должен открыться
-                // (навигация уводит на AUTH), но на всякий случай — не зависаем.
                 val current = currentUserId.filterNotNull().first()
                 val isOwn = targetUserId == current
                 val user = runCatchingCancellable {
